@@ -17,7 +17,8 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const params = useParams<{ activityId: string }>();
     const activityId = propActivityId || params.activityId;
 
-    const [status, setStatus] = useState<'locating' | 'ready' | 'blocked' | 'submitting' | 'success' | 'already_checked'>('locating');
+    // Added 'verifying' as the initial state
+    const [status, setStatus] = useState<'verifying' | 'locating' | 'ready' | 'blocked' | 'submitting' | 'success' | 'already_checked'>('verifying');
     const [locationError, setLocationError] = useState('');
     const [currentPos, setCurrentPos] = useState<{ lat: number, lng: number } | null>(null);
     const [distance, setDistance] = useState<number>(0);
@@ -43,17 +44,22 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                 if (existing) {
                     setCheckedInDetail(existing);
                     setStatus('already_checked');
+                } else {
+                    // Not checked in -> Proceed to locating
+                    setStatus('locating');
                 }
             } catch (e) {
                 console.error("Failed to check history", e);
+                // On error, assume not checked in to allow retry, or handle differently
+                setStatus('locating');
             }
         };
         checkHistory();
     }, [user, activityId]);
 
-    // 1. Continuous GPS Tracking (Only if not checked in)
+    // 1. Continuous GPS Tracking (Only if verifying passed and not checked in)
     useEffect(() => {
-        if (!activityId || status === 'already_checked' || status === 'success') return; 
+        if (!activityId || status === 'verifying' || status === 'already_checked' || status === 'success') return; 
         
         if (!location) {
             if (data.checkInLocations.length > 0) {
@@ -148,6 +154,17 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     };
 
     if (!activityId) return <div className="p-10 text-center">Invalid Activity ID</div>;
+
+    // Verifying State (Loading History)
+    if (status === 'verifying') {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center font-kanit">
+                <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+                <h3 className="text-lg font-bold text-gray-800">กำลังตรวจสอบสถานะ...</h3>
+                <p className="text-gray-500 text-sm mt-1">กรุณารอสักครู่ ระบบกำลังเช็คว่าคุณเคยลงทะเบียนไปแล้วหรือไม่</p>
+            </div>
+        );
+    }
 
     if (!activity || !location) {
         return (
