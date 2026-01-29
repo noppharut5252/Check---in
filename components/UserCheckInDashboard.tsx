@@ -19,6 +19,9 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
     const [searchTerm, setSearchTerm] = useState('');
     const [isScannerOpen, setIsScannerOpen] = useState(false);
 
+    // Check config for history visibility
+    const showHistory = data.appConfig?.menu_checkin_history !== false;
+
     useEffect(() => {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
@@ -138,22 +141,24 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
             </div>
 
             {/* Tab Navigation */}
-            <div className="flex bg-gray-100 p-1 rounded-xl mx-1">
-                <button
-                    onClick={() => setViewMode('activities')}
-                    className={`flex-1 flex items-center justify-center py-2.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'activities' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                    <LayoutGrid className="w-4 h-4 mr-2" /> รายการกิจกรรม
-                </button>
-                <button
-                    onClick={() => setViewMode('history')}
-                    className={`flex-1 flex items-center justify-center py-2.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'history' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                    <History className="w-4 h-4 mr-2" /> ประวัติการเข้าร่วม
-                </button>
-            </div>
+            {showHistory && (
+                <div className="flex bg-gray-100 p-1 rounded-xl mx-1">
+                    <button
+                        onClick={() => setViewMode('activities')}
+                        className={`flex-1 flex items-center justify-center py-2.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'activities' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        <LayoutGrid className="w-4 h-4 mr-2" /> รายการกิจกรรม
+                    </button>
+                    <button
+                        onClick={() => setViewMode('history')}
+                        className={`flex-1 flex items-center justify-center py-2.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'history' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        <History className="w-4 h-4 mr-2" /> ประวัติการเข้าร่วม
+                    </button>
+                </div>
+            )}
 
-            {viewMode === 'history' ? (
+            {viewMode === 'history' && showHistory ? (
                 <CheckInHistory user={user} />
             ) : (
                 <div className="px-1">
