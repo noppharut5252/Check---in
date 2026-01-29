@@ -255,6 +255,11 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
 
     // --- Handlers ---
 
+    const handleViewLogs = (activityName: string) => {
+        setSearchLogsQuery(activityName);
+        setActiveTab('logs');
+    };
+
     const handleSaveLocation = async () => {
         setIsSaving(true);
         
@@ -564,6 +569,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
             {/* Content */}
             {activeTab === 'locations' ? (
                 <div className="space-y-4">
+                    {/* ... (Locations Search Bar) ... */}
                     <div className="flex gap-2">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -647,10 +653,9 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                         return (
                             <div key={act.ActivityID} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                                 <div className="flex items-center gap-3">
-                                    {/* Activity Image Preview */}
                                     <div className="w-12 h-12 shrink-0 bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
                                         {act.Image ? (
-                                            <img src={act.Image} className="w-full h-full object-cover" alt={act.Name} />
+                                            <img src={getImageUrl(act.Image)} className="w-full h-full object-cover" alt={act.Name} />
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center text-green-600"><Activity className="w-6 h-6"/></div>
                                         )}
@@ -681,11 +686,11 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                                     </span>
                                     <div className="flex gap-2 mt-1">
                                         <button 
-                                            onClick={() => navigate(`/checkin/${act.ActivityID}`)}
-                                            className="p-2 text-green-600 hover:text-green-800 bg-green-50 rounded-lg hover:bg-green-100"
-                                            title="เช็คอิน (Test)"
+                                            onClick={() => handleViewLogs(act.Name)}
+                                            className="p-2 text-purple-600 hover:text-purple-800 bg-purple-50 rounded-lg hover:bg-purple-100 flex items-center gap-1 text-xs font-bold px-3"
+                                            title="ดูประวัติการเช็คอิน"
                                         >
-                                            <PlayCircle className="w-4 h-4" />
+                                            <History className="w-4 h-4" /> ดูประวัติ ({act.CurrentCount || 0})
                                         </button>
                                         <button onClick={() => { setEditAct(act); setIsEditing(true); }} className="p-2 text-gray-400 hover:text-blue-600 bg-gray-50 rounded-lg"><Edit2 className="w-4 h-4"/></button>
                                         <button 
@@ -769,6 +774,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                 </div>
             ) : (
                 <div className="space-y-4">
+                    {/* ... (Printables Tab Content) ... */}
                     <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-800">
                         <div className="flex items-center mb-3">
                             <Printer className="w-6 h-6 mr-3" />
@@ -863,6 +869,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                         <div className="space-y-4">
                             {activeTab === 'locations' ? (
                                 <>
+                                    {/* ... Location Form ... */}
                                     {/* Multi-Image Gallery Manager */}
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center">
@@ -931,7 +938,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                                 </>
                             ) : (
                                 <>
-                                    {/* Activity Image Upload */}
+                                    {/* ... Activity Form ... */}
                                     <div className="flex justify-center">
                                         <div 
                                             className="w-full h-40 bg-gray-100 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors relative overflow-hidden group"
