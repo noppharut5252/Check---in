@@ -9,7 +9,7 @@ import QRCode from 'qrcode';
 import L from 'leaflet';
 import ConfirmationModal from './ConfirmationModal';
 
-// Declare html2pdf from CDN
+// Declare html2pdf
 declare var html2pdf: any;
 
 interface AdminProps {
@@ -18,107 +18,61 @@ interface AdminProps {
     onDataUpdate: () => void;
 }
 
-// ... (MapPicker component remains unchanged) ...
-const MapPicker: React.FC<{ lat: number, lng: number, onChange: (lat: number, lng: number) => void }> = ({ lat, lng, onChange }) => {
+const MapPicker: React.FC<{ lat: number; lng: number; onChange: (lat: number, lng: number) => void }> = ({ lat, lng, onChange }) => {
     const mapRef = useRef<HTMLDivElement>(null);
-    const leafletMap = useRef<L.Map | null>(null);
-    const markerRef = useRef<L.Marker | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [isSearching, setIsSearching] = useState(false);
+    const mapObj = useRef<L.Map | null>(null);
+    const markerObj = useRef<L.Marker | null>(null);
 
     useEffect(() => {
         if (!mapRef.current) return;
-
-        // Default to Bangkok if 0,0
-        const initialLat = lat || 13.7563;
-        const initialLng = lng || 100.5018;
-
-        if (!leafletMap.current) {
-            leafletMap.current = L.map(mapRef.current).setView([initialLat, initialLng], 15);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(leafletMap.current);
-
-            // Custom Icon
-            const icon = L.divIcon({
-                className: 'custom-div-icon',
-                html: `<div style="background-color:#ef4444;width:1.5rem;height:1.5rem;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>`,
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
-            });
-
-            markerRef.current = L.marker([initialLat, initialLng], { draggable: true, icon }).addTo(leafletMap.current);
-            
-            markerRef.current.on('dragend', (e) => {
-                const { lat, lng } = e.target.getLatLng();
-                onChange(parseFloat(lat.toFixed(6)), parseFloat(lng.toFixed(6)));
-            });
-
-            leafletMap.current.on('click', (e) => {
-                markerRef.current?.setLatLng(e.latlng);
-                onChange(parseFloat(e.latlng.lat.toFixed(6)), parseFloat(e.latlng.lng.toFixed(6)));
-            });
-        }
         
-        return () => {
-            // Cleanup on unmount handled by ref check
-        };
+        if (!mapObj.current) {
+            const initialLat = lat || 13.7563;
+            const initialLng = lng || 100.5018;
+            
+            mapObj.current = L.map(mapRef.current).setView([initialLat, initialLng], 15);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(mapObj.current);
+
+            markerObj.current = L.marker([initialLat, initialLng], { draggable: true }).addTo(mapObj.current);
+            
+            markerObj.current.on('dragend', (e) => {
+                const { lat, lng } = e.target.getLatLng();
+                onChange(lat, lng);
+            });
+
+            mapObj.current.on('click', (e) => {
+                const { lat, lng } = e.latlng;
+                if (markerObj.current) markerObj.current.setLatLng([lat, lng]);
+                onChange(lat, lng);
+            });
+            
+            // Force resize after mount to prevent grey tiles
+            setTimeout(() => { mapObj.current?.invalidateSize(); }, 500);
+        }
     }, []);
 
-    const handleSearchAddress = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!searchQuery.trim()) return;
-        
-        setIsSearching(true);
-        try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
-            const results = await response.json();
-            
-            if (results && results.length > 0) {
-                const { lat, lon } = results[0];
-                const newLat = parseFloat(lat);
-                const newLng = parseFloat(lon);
-                
-                leafletMap.current?.setView([newLat, newLng], 16);
-                markerRef.current?.setLatLng([newLat, newLng]);
-                onChange(parseFloat(newLat.toFixed(6)), parseFloat(newLng.toFixed(6)));
-            } else {
-                alert('ไม่พบสถานที่');
+    // Update marker if props change externally (e.g. typing in input)
+    useEffect(() => {
+        if (markerObj.current && lat && lng) {
+            const cur = markerObj.current.getLatLng();
+            if (cur.lat !== lat || cur.lng !== lng) {
+                markerObj.current.setLatLng([lat, lng]);
+                mapObj.current?.setView([lat, lng], mapObj.current.getZoom());
             }
-        } catch (error) {
-            console.error("Map search error", error);
-        } finally {
-            setIsSearching(false);
         }
-    };
+    }, [lat, lng]);
 
-    return (
-        <div className="relative w-full h-72 rounded-xl z-0 border border-gray-300 overflow-hidden">
-            <div ref={mapRef} className="w-full h-full" />
-            
-            {/* Map Search Overlay */}
-            <div className="absolute top-2 right-2 z-[1000] bg-white p-1 rounded-lg shadow-md flex">
-                <form onSubmit={handleSearchAddress} className="flex">
-                    <input 
-                        type="text" 
-                        placeholder="ค้นหาสถานที่..." 
-                        className="px-2 py-1 text-sm outline-none w-40"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    <button type="submit" disabled={isSearching} className="p-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100">
-                        {isSearching ? <Loader2 className="w-4 h-4 animate-spin"/> : <Search className="w-4 h-4"/>}
-                    </button>
-                </form>
-            </div>
-        </div>
-    );
+    return <div ref={mapRef} className="w-full h-64 rounded-lg border border-gray-300 z-0" />;
 };
 
 const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate }) => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState<'locations' | 'activities' | 'printables' | 'logs'>('locations');
+    
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -130,14 +84,10 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
     const [activityStatusFilter, setActivityStatusFilter] = useState<'all' | 'active' | 'upcoming' | 'ended'>('all');
     const [searchLogsQuery, setSearchLogsQuery] = useState('');
     
-    // Logs State
     const [logs, setLogs] = useState<any[]>([]);
     const [isLoadingLogs, setIsLoadingLogs] = useState(false);
     
-    // Custom Poster Note
     const [posterNote, setPosterNote] = useState('');
-
-    // Delete Modal State
     const [deleteModal, setDeleteModal] = useState<{ 
         isOpen: boolean; 
         type: 'location' | 'activity' | 'log'; 
@@ -146,11 +96,8 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         warning?: string;
     }>({ isOpen: false, type: 'activity', id: '', title: '' });
 
-    // Forms
     const [editLoc, setEditLoc] = useState<Partial<CheckInLocation>>({});
     const [editAct, setEditAct] = useState<Partial<CheckInActivity>>({});
-    
-    // Helper state for location images array
     const [currentLocImages, setCurrentLocImages] = useState<string[]>([]);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -166,7 +113,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         }
     }, [activeTab]);
 
-    // Auto-open edit modal if query param present
     useEffect(() => {
         const editId = searchParams.get('editActivity');
         if (editId && data.checkInActivities.length > 0) {
@@ -179,7 +125,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         }
     }, [searchParams, data.checkInActivities]);
 
-    // Initialize Images array when editing location
     useEffect(() => {
         if (activeTab === 'locations' && editLoc) {
             try {
@@ -187,7 +132,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                     const parsed = JSON.parse(editLoc.Images);
                     setCurrentLocImages(Array.isArray(parsed) ? parsed : []);
                 } else if (editLoc.Image) {
-                    // Fallback to single legacy image
                     setCurrentLocImages([editLoc.Image]);
                 } else {
                     setCurrentLocImages([]);
@@ -199,8 +143,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
     }, [editLoc, activeTab]);
 
     if (user.Role !== 'admin') return <div>Access Denied</div>;
-
-    // --- Helper Logic ---
 
     const isDateValid = (d: any) => d && !isNaN(new Date(d).getTime());
 
@@ -217,7 +159,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         return { label: 'กำลังดำเนินอยู่', color: 'bg-green-100 text-green-700', key: 'active' };
     };
 
-    // Filtered Data
     const filteredLocations = useMemo(() => {
         return data.checkInLocations.filter(loc => 
             loc.Name.toLowerCase().includes(searchLocationQuery.toLowerCase())
@@ -231,7 +172,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
             const matchesStatus = activityStatusFilter === 'all' || status.key === activityStatusFilter;
             return matchesSearch && matchesStatus;
         }).sort((a, b) => {
-            // Sort active first
             const statusA = getActivityStatus(a).key === 'active' ? 0 : 1;
             const statusB = getActivityStatus(b).key === 'active' ? 0 : 1;
             return statusA - statusB;
@@ -246,7 +186,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         );
     }, [logs, searchLogsQuery]);
 
-    // Helper for Image URLs
     const getImageUrl = (idOrUrl: string) => {
         if (!idOrUrl) return '';
         if (idOrUrl.startsWith('http')) return idOrUrl;
@@ -262,18 +201,13 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
 
     const handleSaveLocation = async () => {
         setIsSaving(true);
-        
-        // Prepare final object with serialized images
         const finalLoc = {
             ...editLoc,
             Images: JSON.stringify(currentLocImages),
-            // Ensure primary Image field is populated for backward compatibility (use first image)
             Image: currentLocImages.length > 0 ? currentLocImages[0] : ''
         };
-
         const res = await saveLocation(finalLoc);
         setIsSaving(false);
-        
         if (res.status === 'success') {
             setIsEditing(false);
             onDataUpdate();
@@ -283,46 +217,27 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
     };
 
     const handleDeleteLocationClick = (loc: CheckInLocation) => {
-        // Data Integrity Check
         const relatedActivities = data.checkInActivities.filter(a => a.LocationID === loc.LocationID);
         if (relatedActivities.length > 0) {
             alert(`ไม่สามารถลบสถานที่ "${loc.Name}" ได้ เนื่องจากมีการใช้งานใน ${relatedActivities.length} กิจกรรม กรุณาลบหรือย้ายกิจกรรมออกก่อน`);
             return;
         }
-
-        setDeleteModal({
-            isOpen: true,
-            type: 'location',
-            id: loc.LocationID,
-            title: `ลบสถานที่ "${loc.Name}"?`
-        });
+        setDeleteModal({ isOpen: true, type: 'location', id: loc.LocationID, title: `ลบสถานที่ "${loc.Name}"?` });
     };
 
     const handleDeleteActivityClick = (act: CheckInActivity) => {
-        setDeleteModal({
-            isOpen: true,
-            type: 'activity',
-            id: act.ActivityID,
-            title: `ลบกิจกรรม "${act.Name}"?`
-        });
+        setDeleteModal({ isOpen: true, type: 'activity', id: act.ActivityID, title: `ลบกิจกรรม "${act.Name}"?` });
     };
 
     const handleDeleteLogClick = (log: any) => {
-        setDeleteModal({
-            isOpen: true,
-            type: 'log',
-            id: log.CheckInID,
-            title: `ลบประวัติของ "${log.UserName}"?`
-        });
+        setDeleteModal({ isOpen: true, type: 'log', id: log.CheckInID, title: `ลบประวัติของ "${log.UserName}"?` });
     };
 
     const handleConfirmDelete = async () => {
         setIsSaving(true);
-        if (deleteModal.type === 'location') {
-            await deleteLocation(deleteModal.id);
-        } else if (deleteModal.type === 'activity') {
-            await deleteActivity(deleteModal.id);
-        } else if (deleteModal.type === 'log') {
+        if (deleteModal.type === 'location') await deleteLocation(deleteModal.id);
+        else if (deleteModal.type === 'activity') await deleteActivity(deleteModal.id);
+        else if (deleteModal.type === 'log') {
             await deleteCheckInLog(deleteModal.id);
             setLogs(prev => prev.filter(l => l.CheckInID !== deleteModal.id));
         }
@@ -335,47 +250,30 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         setIsSaving(true);
         const res = await saveActivity(editAct);
         setIsSaving(false);
-        
         if (res.status === 'success') {
             setIsEditing(false);
-            if (searchParams.get('editActivity')) {
-                navigate('/checkin-dashboard', { replace: true });
-            }
+            if (searchParams.get('editActivity')) navigate('/checkin-dashboard', { replace: true });
             onDataUpdate();
         } else {
             alert('บันทึกกิจกรรมล้มเหลว: ' + (res.message || 'Unknown error'));
         }
     };
 
-    // ... (Image Handlers remain same) ...
     const handleLocationImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
-
         setIsUploading(true);
         try {
-            // Support multiple files upload
             const newImageIds: string[] = [];
-            
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 const base64 = await resizeImage(file, 800, 600, 0.8);
                 const res = await uploadImage(base64, `location_${Date.now()}_${i}.jpg`);
-                
-                if (res.status === 'success') {
-                    newImageIds.push(res.fileId || res.fileUrl);
-                }
+                if (res.status === 'success') newImageIds.push(res.fileId || res.fileUrl);
             }
-            
             setCurrentLocImages(prev => [...prev, ...newImageIds]);
-            
-        } catch (err) {
-            console.error(err);
-            alert('Error uploading image');
-        } finally {
-            setIsUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
+        } catch (err) { console.error(err); alert('Error uploading image'); } 
+        finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
 
     const handleRemoveLocImage = (indexToRemove: number) => {
@@ -385,26 +283,16 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
     const handleActivityImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
         setIsUploading(true);
         try {
             const base64 = await resizeImage(file, 800, 600, 0.8);
             const res = await uploadImage(base64, `activity_${Date.now()}.jpg`);
             if (res.status === 'success') {
-                const url = res.fileId 
-                    ? `https://drive.google.com/thumbnail?id=${res.fileId}&sz=w1000` 
-                    : res.fileUrl;
+                const url = res.fileId ? `https://drive.google.com/thumbnail?id=${res.fileId}&sz=w1000` : res.fileUrl;
                 setEditAct(prev => ({ ...prev, Image: url }));
-            } else {
-                alert('Upload failed: ' + res.message);
-            }
-        } catch (err) {
-            console.error(err);
-            alert('Error uploading image');
-        } finally {
-            setIsUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
+            } else { alert('Upload failed: ' + res.message); }
+        } catch (err) { console.error(err); alert('Error uploading image'); }
+        finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
 
     const handleCreateSampleData = async () => {
@@ -412,20 +300,12 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         setIsGenerating(true);
         try {
             const API_URL = "https://script.google.com/macros/s/AKfycbxyS_GG5snXmt2YTcMCMMYgfQZmzTynb-esxe8N2NBAdC1uGdIGGnPh7W0PuId4r4OF/exec"; 
-            await fetch(API_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'createSampleData' })
-            });
+            await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'createSampleData' }) });
             alert('สร้างข้อมูลตัวอย่างสำเร็จ!');
             onDataUpdate();
-        } catch (e) {
-            alert('เกิดข้อผิดพลาด');
-        } finally {
-            setIsGenerating(false);
-        }
+        } catch (e) { alert('เกิดข้อผิดพลาด'); } finally { setIsGenerating(false); }
     };
 
-    // ... (Poster Generation Logic remains same) ...
     const generatePosterHTML = async (activitiesToPrint: any[], customNote: string) => {
         const qrCodePromises = activitiesToPrint.map(async (act) => {
             const checkInUrl = `${window.location.origin}${window.location.pathname}#/checkin/${act.ActivityID}`;
@@ -433,9 +313,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
             const loc = data.checkInLocations.find(l => l.LocationID === act.LocationID);
             return { act, loc, qr };
         });
-
         const pages = await Promise.all(qrCodePromises);
-
         return `
             <html>
                 <head>
@@ -569,7 +447,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
             {/* Content */}
             {activeTab === 'locations' ? (
                 <div className="space-y-4">
-                    {/* ... (Locations Search Bar) ... */}
                     <div className="flex gap-2">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -774,7 +651,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                 </div>
             ) : (
                 <div className="space-y-4">
-                    {/* ... (Printables Tab Content) ... */}
                     <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-800">
                         <div className="flex items-center mb-3">
                             <Printer className="w-6 h-6 mr-3" />
@@ -783,7 +659,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                                 <p className="text-xs mt-1">เลือกพิมพ์ป้ายเพื่อนำไปติดที่จุดเช็คอิน หรือดาวน์โหลดเป็น PDF</p>
                             </div>
                         </div>
-                        {/* Custom Poster Note Input */}
                         <div className="bg-white p-3 rounded-lg border border-blue-200">
                             <label className="text-xs font-bold text-gray-500 mb-1 flex items-center">
                                 <FileText className="w-3 h-3 mr-1" /> ข้อความเพิ่มเติมในป้าย (Optional)
@@ -857,7 +732,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                 </div>
             )}
 
-            {/* Modal */}
             {isEditing && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -869,8 +743,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                         <div className="space-y-4">
                             {activeTab === 'locations' ? (
                                 <>
-                                    {/* ... Location Form ... */}
-                                    {/* Multi-Image Gallery Manager */}
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center">
                                             <label className="text-xs font-bold text-gray-500">รูปภาพสถานที่ (Gallery)</label>
@@ -907,7 +779,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
 
                                     <input className="w-full border rounded-lg p-3" placeholder="ชื่อสถานที่" value={editLoc.Name || ''} onChange={e => setEditLoc({...editLoc, Name: e.target.value})} />
                                     
-                                    {/* Floor & Room Inputs */}
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-bold text-gray-500 mb-1">ชั้น (Floor)</label>
@@ -919,7 +790,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                                         </div>
                                     </div>
 
-                                    {/* Map Picker for Location */}
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 mb-2 flex items-center"><MousePointer2 className="w-3 h-3 mr-1"/> ปักหมุดตำแหน่ง (ค้นหาหรือลากหมุด)</label>
                                         <MapPicker 
@@ -938,7 +808,6 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                                 </>
                             ) : (
                                 <>
-                                    {/* ... Activity Form ... */}
                                     <div className="flex justify-center">
                                         <div 
                                             className="w-full h-40 bg-gray-100 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors relative overflow-hidden group"
