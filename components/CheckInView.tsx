@@ -17,7 +17,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const params = useParams<{ activityId: string }>();
     const activityId = propActivityId || params.activityId;
 
-    // Start with 'verifying' to block everything else
+    // State Machine: verifying -> (already_checked OR locating) -> (ready/blocked) -> submitting -> success
     const [status, setStatus] = useState<'verifying' | 'locating' | 'ready' | 'blocked' | 'submitting' | 'success' | 'already_checked'>('verifying');
     const [locationError, setLocationError] = useState('');
     const [currentPos, setCurrentPos] = useState<{ lat: number, lng: number } | null>(null);
@@ -32,7 +32,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // 1. Verify History FIRST
+    // 1. Verify History FIRST (Blocker)
     useEffect(() => {
         let isMounted = true;
         const checkHistory = async () => {
@@ -53,7 +53,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                 }
             } catch (e) {
                 console.error("Failed to check history", e);
-                if (isMounted) setStatus('locating'); // Fallback to allow check-in on error
+                if (isMounted) setStatus('locating'); // Fallback to allow check-in
             }
         };
         
@@ -113,7 +113,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         );
 
         return () => navigator.geolocation.clearWatch(geoId);
-    }, [location, status, data.checkInLocations.length]); // Dependency on status ensures we don't start too early
+    }, [location, status, data.checkInLocations.length]); 
 
     const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -178,6 +178,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                 <AlertTriangle className="w-16 h-16 text-gray-300 mb-4" />
                 <h3 className="text-xl font-bold text-gray-800">ไม่พบกิจกรรม</h3>
                 <p className="text-gray-500 mt-2">อาจเป็นเพราะรหัสกิจกรรมไม่ถูกต้อง หรือข้อมูลยังไม่ถูกโหลด</p>
+                <div className="mt-4 text-xs text-gray-400">Activity ID: {activityId}</div>
                 <button onClick={() => navigate(-1)} className="mt-6 px-6 py-2 bg-white border rounded-lg shadow-sm font-bold text-gray-600">
                     ย้อนกลับ
                 </button>
