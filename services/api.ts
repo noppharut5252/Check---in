@@ -60,6 +60,15 @@ export const getCheckInLogs = async () => {
     return res.logs || [];
 };
 
+export const getUserCheckInHistory = async (userId: string) => {
+    const res = await apiRequest('getUserCheckIns', { userId });
+    return res.logs || [];
+};
+
+export const deleteCheckInLog = async (id: string) => {
+    return await apiRequest('deleteCheckInLog', { id });
+};
+
 // --- Auth ---
 
 export const loginStandardUser = async (username: string, password: string): Promise<CheckInUser | null> => {
