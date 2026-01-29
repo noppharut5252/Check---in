@@ -17,7 +17,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const params = useParams<{ activityId: string }>();
     const activityId = propActivityId || params.activityId;
 
-    // Added 'verifying' as the initial state
+    // Start with 'verifying' to block everything else
     const [status, setStatus] = useState<'verifying' | 'locating' | 'ready' | 'blocked' | 'submitting' | 'success' | 'already_checked'>('verifying');
     const [locationError, setLocationError] = useState('');
     const [currentPos, setCurrentPos] = useState<{ lat: number, lng: number } | null>(null);
@@ -32,34 +32,41 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // 0. Check if already checked in on mount
+    // 1. Verify History FIRST
     useEffect(() => {
+        let isMounted = true;
         const checkHistory = async () => {
-            // Safety check for ID
             const uid = user?.UserID || user?.userid;
             if (!uid || !activityId) return;
+            
             try {
                 const logs = await getUserCheckInHistory(uid);
+                if (!isMounted) return;
+
                 const existing = logs.find((l: any) => l.ActivityID === activityId);
                 if (existing) {
                     setCheckedInDetail(existing);
                     setStatus('already_checked');
                 } else {
-                    // Not checked in -> Proceed to locating
+                    // Only verify passed -> start locating
                     setStatus('locating');
                 }
             } catch (e) {
                 console.error("Failed to check history", e);
-                // On error, assume not checked in to allow retry, or handle differently
-                setStatus('locating');
+                if (isMounted) setStatus('locating'); // Fallback to allow check-in on error
             }
         };
+        
         checkHistory();
+        return () => { isMounted = false; };
     }, [user, activityId]);
 
-    // 1. Continuous GPS Tracking (Only if verifying passed and not checked in)
+    // 2. Continuous GPS Tracking (Only runs if status is locating/ready/blocked)
     useEffect(() => {
-        if (!activityId || status === 'verifying' || status === 'already_checked' || status === 'success') return; 
+        // CRITICAL: Do not start GPS if we are verifying, already checked in, or submitting
+        if (status === 'verifying' || status === 'already_checked' || status === 'success' || status === 'submitting') {
+            return;
+        }
         
         if (!location) {
             if (data.checkInLocations.length > 0) {
@@ -92,9 +99,9 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
 
                 const radius = parseFloat(location.RadiusMeters) || 100;
                 if (dist <= radius) {
-                    if (status !== 'submitting') setStatus('ready');
+                    setStatus('ready');
                 } else {
-                    if (status !== 'submitting') setStatus('blocked');
+                    setStatus('blocked');
                 }
             },
             (err) => {
@@ -106,7 +113,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         );
 
         return () => navigator.geolocation.clearWatch(geoId);
-    }, [location, status, data.checkInLocations.length, activityId]);
+    }, [location, status, data.checkInLocations.length]); // Dependency on status ensures we don't start too early
 
     const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -118,7 +125,6 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const handleSubmit = async () => {
         if (!location || !currentPos || !activity) return;
         
-        // Robust User ID check
         const uid = user.UserID || user.userid;
         if (!uid) {
             alert('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
@@ -155,13 +161,13 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
 
     if (!activityId) return <div className="p-10 text-center">Invalid Activity ID</div>;
 
-    // Verifying State (Loading History)
+    // --- VIEW: LOADING / VERIFYING ---
     if (status === 'verifying') {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center font-kanit">
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center font-kanit animate-in fade-in">
                 <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
                 <h3 className="text-lg font-bold text-gray-800">กำลังตรวจสอบสถานะ...</h3>
-                <p className="text-gray-500 text-sm mt-1">กรุณารอสักครู่ ระบบกำลังเช็คว่าคุณเคยลงทะเบียนไปแล้วหรือไม่</p>
+                <p className="text-gray-500 text-sm mt-1">ระบบกำลังเช็คประวัติการเข้าร่วมกิจกรรม</p>
             </div>
         );
     }
@@ -172,7 +178,6 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                 <AlertTriangle className="w-16 h-16 text-gray-300 mb-4" />
                 <h3 className="text-xl font-bold text-gray-800">ไม่พบกิจกรรม</h3>
                 <p className="text-gray-500 mt-2">อาจเป็นเพราะรหัสกิจกรรมไม่ถูกต้อง หรือข้อมูลยังไม่ถูกโหลด</p>
-                <div className="mt-4 text-xs text-gray-400">Activity ID: {activityId}</div>
                 <button onClick={() => navigate(-1)} className="mt-6 px-6 py-2 bg-white border rounded-lg shadow-sm font-bold text-gray-600">
                     ย้อนกลับ
                 </button>
@@ -180,7 +185,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         );
     }
 
-    // Success Screen (Freshly checked in)
+    // --- VIEW: SUCCESS ---
     if (status === 'success') {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-green-50 p-6 text-center font-kanit">
@@ -197,7 +202,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         );
     }
 
-    // Already Checked In Screen (From History)
+    // --- VIEW: ALREADY CHECKED IN ---
     if (status === 'already_checked' && checkedInDetail) {
         const getImageUrl = (url: string) => url && !url.startsWith('http') ? `https://drive.google.com/thumbnail?id=${url}&sz=w1000` : url;
         return (
@@ -254,6 +259,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         );
     }
 
+    // --- VIEW: READY TO CHECK IN (Map & Form) ---
     const radius = parseFloat(location.RadiusMeters) || 100;
     const excessDistance = Math.max(0, distance - radius);
 
