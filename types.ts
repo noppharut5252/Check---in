@@ -30,6 +30,7 @@ export interface CheckInActivity {
   Mode?: string;
   ReqTeachers?: number;
   ReqStudents?: number;
+  RequirePhoto?: boolean; // New Field: Enforce photo upload
 }
 
 export interface CheckInUser {
