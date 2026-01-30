@@ -1,7 +1,9 @@
+
 {
   "name": "Check - in",
   "description": "A comprehensive dashboard to manage academic competitions, tracking teams, schools, scores, and file submissions using Google Sheets as a database.",
   "requestFramePermissions": [
-    "camera"
+    "camera",
+    "geolocation"
   ]
 }
