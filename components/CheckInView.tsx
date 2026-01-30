@@ -1,10 +1,22 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppData, CheckInActivity, CheckInLocation, CheckInUser } from '../types';
-import { MapPin, Camera, Navigation, AlertOctagon, CheckCircle, Loader2, Send, MessageSquare, AlertTriangle, ArrowLeft, RefreshCw, FileCheck } from 'lucide-react';
+import { 
+    MapPin, Camera, Navigation, AlertOctagon, CheckCircle, Loader2, Send, 
+    MessageSquare, AlertTriangle, ArrowLeft, RefreshCw, FileCheck, Signal, 
+    SignalHigh, SignalLow, X, Zap 
+} from 'lucide-react';
 import { performCheckIn, uploadCheckInImage, getUserCheckInHistory } from '../services/api';
-import { resizeImage } from '../services/utils';
 import { useParams, useNavigate } from 'react-router-dom';
+import L from 'leaflet';
+
+// Fix Leaflet marker icon issue in React
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
 interface CheckInViewProps {
     data: AppData;
@@ -12,125 +24,296 @@ interface CheckInViewProps {
     activityId?: string;
 }
 
+// --- Helper: Circular Progress ---
+const CircularDistance: React.FC<{ distance: number, radius: number, maxRange?: number }> = ({ distance, radius, maxRange = 500 }) => {
+    const percentage = Math.max(0, Math.min(100, ((maxRange - Math.max(0, distance - radius)) / maxRange) * 100));
+    const isInside = distance <= radius;
+    
+    // Color Logic
+    let color = '#ef4444'; // Red
+    if (isInside) color = '#22c55e'; // Green
+    else if (distance <= radius * 1.5) color = '#f59e0b'; // Orange
+
+    return (
+        <div className="relative flex flex-col items-center justify-center">
+            <svg className="w-32 h-32 transform -rotate-90">
+                <circle cx="64" cy="64" r="56" stroke="#f3f4f6" strokeWidth="12" fill="transparent" />
+                <circle 
+                    cx="64" cy="64" r="56" 
+                    stroke={color} 
+                    strokeWidth="12" 
+                    fill="transparent" 
+                    strokeDasharray={351} 
+                    strokeDashoffset={351 - (351 * percentage) / 100} 
+                    strokeLinecap="round"
+                    className="transition-all duration-1000 ease-out"
+                />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className={`text-2xl font-black ${isInside ? 'text-green-600' : 'text-gray-700'}`}>
+                    {distance < 1000 ? Math.round(distance) : (distance/1000).toFixed(1)}
+                </span>
+                <span className="text-xs text-gray-400 font-medium uppercase">{distance < 1000 ? 'เมตร' : 'กม.'}</span>
+            </div>
+            <div className={`mt-2 text-xs font-bold px-3 py-1 rounded-full ${isInside ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                {isInside ? 'อยู่ในพื้นที่' : `เข้าใกล้อีก ${Math.max(0, Math.round(distance - radius))} ม.`}
+            </div>
+        </div>
+    );
+};
+
+// --- Custom Camera Component ---
+const CustomCamera: React.FC<{ onCapture: (base64: string) => void, onClose: () => void }> = ({ onCapture, onClose }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [isStreaming, setIsStreaming] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        let stream: MediaStream | null = null;
+        const startCamera = async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
+                });
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    setIsStreaming(true);
+                }
+            } catch (err) {
+                console.error("Camera Error", err);
+                setError('ไม่สามารถเข้าถึงกล้องได้ กรุณาตรวจสอบสิทธิ์');
+            }
+        };
+        startCamera();
+        return () => {
+            if (stream) stream.getTracks().forEach(t => t.stop());
+        };
+    }, []);
+
+    const takePhoto = () => {
+        if (videoRef.current && canvasRef.current) {
+            const video = videoRef.current;
+            const canvas = canvasRef.current;
+            // Set canvas dimensions to match video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                // Compress slightly
+                const base64 = canvas.toDataURL('image/jpeg', 0.8); 
+                onCapture(base64);
+                onClose();
+            }
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black z-[300] flex flex-col animate-in fade-in duration-300">
+            {/* Header */}
+            <div className="absolute top-0 w-full p-4 flex justify-between items-center z-20 bg-gradient-to-b from-black/60 to-transparent">
+                <span className="text-white font-bold flex items-center"><Camera className="w-5 h-5 mr-2" /> ถ่ายรูปยืนยัน</span>
+                <button onClick={onClose} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30"><X className="w-6 h-6"/></button>
+            </div>
+            
+            {/* Viewport */}
+            <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+                {error ? (
+                    <div className="text-white text-center p-6">
+                        <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+                        <p>{error}</p>
+                    </div>
+                ) : (
+                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                )}
+            </div>
+
+            {/* Controls */}
+            <div className="h-32 bg-black flex items-center justify-center pb-safe relative z-20">
+                <button 
+                    onClick={takePhoto} 
+                    disabled={!isStreaming}
+                    className="w-20 h-20 bg-white rounded-full border-4 border-gray-300 shadow-lg active:scale-95 transition-transform flex items-center justify-center group"
+                >
+                    <div className="w-16 h-16 bg-white rounded-full border-2 border-black/10 group-active:bg-gray-200"></div>
+                </button>
+                <canvas ref={canvasRef} className="hidden" />
+            </div>
+        </div>
+    );
+};
+
 const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propActivityId }) => {
     const navigate = useNavigate();
     const params = useParams<{ activityId: string }>();
     const activityId = propActivityId || params.activityId;
 
-    // State Machine: verifying -> (already_checked OR locating) -> (ready/blocked) -> submitting -> success
+    // --- State ---
     const [status, setStatus] = useState<'verifying' | 'locating' | 'ready' | 'blocked' | 'submitting' | 'success' | 'already_checked'>('verifying');
-    const [locationError, setLocationError] = useState('');
-    const [currentPos, setCurrentPos] = useState<{ lat: number, lng: number } | null>(null);
-    const [distance, setDistance] = useState<number>(0);
+    const [gpsStatus, setGpsStatus] = useState<{ accuracy: number, ready: boolean }>({ accuracy: 0, ready: false });
+    const [distance, setDistance] = useState<number>(Infinity);
+    const [avgPos, setAvgPos] = useState<{ lat: number, lng: number } | null>(null);
     const [photo, setPhoto] = useState<string | null>(null);
     const [comment, setComment] = useState('');
     const [checkedInDetail, setCheckedInDetail] = useState<any>(null);
-    
-    // Find Activity & Location Data
-    const activity = data.checkInActivities.find(a => a.ActivityID === activityId);
-    const location = activity ? data.checkInLocations.find(l => l.LocationID === activity.LocationID) : null;
-    
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
+    const [debugMsg, setDebugMsg] = useState('');
 
-    // 1. Verify History FIRST (Blocker)
+    // Refs
+    const posHistory = useRef<{lat: number, lng: number}[]>([]);
+    const mapContainerRef = useRef<HTMLDivElement>(null);
+    const mapInstance = useRef<L.Map | null>(null);
+    const userMarker = useRef<L.Marker | null>(null);
+    const targetCircle = useRef<L.Circle | null>(null);
+
+    // Data
+    const activity = useMemo(() => data.checkInActivities.find(a => a.ActivityID === activityId), [data, activityId]);
+    const location = useMemo(() => activity ? data.checkInLocations.find(l => l.LocationID === activity.LocationID) : null, [data, activity]);
+
+    // 1. Init History Check
     useEffect(() => {
         let isMounted = true;
         const checkHistory = async () => {
-            const uid = user?.UserID || user?.userid;
-            if (!uid || !activityId) return;
-            
+            if (!user.userid || !activityId) return;
             try {
-                const logs = await getUserCheckInHistory(uid);
+                const logs = await getUserCheckInHistory(user.userid);
                 if (!isMounted) return;
-
                 const existing = logs.find((l: any) => l.ActivityID === activityId);
                 if (existing) {
                     setCheckedInDetail(existing);
                     setStatus('already_checked');
                 } else {
-                    // Only verify passed -> start locating
                     setStatus('locating');
                 }
             } catch (e) {
-                console.error("Failed to check history", e);
-                if (isMounted) setStatus('locating'); // Fallback to allow check-in
+                if (isMounted) setStatus('locating');
             }
         };
-        
         checkHistory();
         return () => { isMounted = false; };
     }, [user, activityId]);
 
-    // 2. Continuous GPS Tracking (Only runs if status is locating/ready/blocked)
+    // 2. GPS Engine (Smart Averaging)
     useEffect(() => {
-        // CRITICAL: Do not start GPS if we are verifying, already checked in, or submitting
-        if (status === 'verifying' || status === 'already_checked' || status === 'success' || status === 'submitting') {
-            return;
-        }
-        
-        if (!location) {
-            if (data.checkInLocations.length > 0) {
-                setStatus('blocked');
-                setLocationError('ไม่พบข้อมูลกิจกรรมหรือสถานที่');
-            }
-            return;
-        }
+        if (status === 'verifying' || status === 'already_checked' || status === 'success' || !location) return;
+
+        const targetLat = parseFloat(location.Latitude);
+        const targetLng = parseFloat(location.Longitude);
+        const targetRadius = parseFloat(location.RadiusMeters) || 100;
 
         const geoId = navigator.geolocation.watchPosition(
             (pos) => {
-                const lat = pos.coords.latitude;
-                const lng = pos.coords.longitude;
-                setCurrentPos({ lat, lng });
+                const { latitude, longitude, accuracy } = pos.coords;
+                
+                // --- Averaging Logic ---
+                const history = posHistory.current;
+                history.push({ lat: latitude, lng: longitude });
+                if (history.length > 5) history.shift(); // Keep last 5
 
-                const targetLat = parseFloat(location.Latitude);
-                const targetLng = parseFloat(location.Longitude);
-                const R = 6371e3; 
-                const φ1 = lat * Math.PI/180;
+                const sum = history.reduce((acc, curr) => ({ lat: acc.lat + curr.lat, lng: acc.lng + curr.lng }), { lat: 0, lng: 0 });
+                const avgLat = sum.lat / history.length;
+                const avgLng = sum.lng / history.length;
+                
+                setAvgPos({ lat: avgLat, lng: avgLng });
+                setGpsStatus({ accuracy: Math.round(accuracy), ready: true });
+
+                // --- Distance Calculation (Haversine) ---
+                const R = 6371e3;
+                const φ1 = avgLat * Math.PI/180;
                 const φ2 = targetLat * Math.PI/180;
-                const Δφ = (targetLat-lat) * Math.PI/180;
-                const Δλ = (targetLng-lng) * Math.PI/180;
-                const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                          Math.cos(φ1) * Math.cos(φ2) *
-                          Math.sin(Δλ/2) * Math.sin(Δλ/2);
+                const Δφ = (targetLat-avgLat) * Math.PI/180;
+                const Δλ = (targetLng-avgLng) * Math.PI/180;
+                const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
                 const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                const dist = R * c;
+                const d = R * c;
+                setDistance(d);
 
-                setDistance(Math.round(dist));
-
-                const radius = parseFloat(location.RadiusMeters) || 100;
-                if (dist <= radius) {
+                // --- Status Update ---
+                // Only allow 'ready' if accuracy is acceptable (< 100m ideally, allowing 60m for tolerance)
+                // And distance is within radius
+                if (d <= targetRadius) {
                     setStatus('ready');
                 } else {
                     setStatus('blocked');
                 }
             },
             (err) => {
-                console.error(err);
-                setLocationError('ไม่สามารถระบุพิกัดได้ กรุณาเปิด GPS');
+                console.error("GPS Error", err);
+                setDebugMsg('GPS Error: ' + err.message);
                 setStatus('blocked');
             },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
         );
 
         return () => navigator.geolocation.clearWatch(geoId);
-    }, [location, status, data.checkInLocations.length]); 
+    }, [location, status]);
 
-    const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const base64 = await resizeImage(e.target.files[0], 800, 800, 0.8);
-            setPhoto(base64);
+    // 3. Map Engine (Leaflet)
+    useEffect(() => {
+        if (!mapContainerRef.current || !location) return;
+
+        // Init Map
+        if (!mapInstance.current) {
+            const lat = parseFloat(location.Latitude);
+            const lng = parseFloat(location.Longitude);
+            
+            const map = L.map(mapContainerRef.current, {
+                zoomControl: false,
+                attributionControl: false,
+                dragging: false, // Make it mini-map like initially? No, let user drag to orient.
+                scrollWheelZoom: false
+            }).setView([lat, lng], 17);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            mapInstance.current = map;
+
+            // Target Circle
+            const radius = parseFloat(location.RadiusMeters) || 100;
+            targetCircle.current = L.circle([lat, lng], {
+                color: '#2563eb',
+                fillColor: '#3b82f6',
+                fillOpacity: 0.1,
+                radius: radius
+            }).addTo(map);
+
+            // Target Marker
+            L.marker([lat, lng]).addTo(map).bindPopup(location.Name);
         }
-    };
+
+        // Update User Marker
+        if (avgPos && mapInstance.current) {
+            if (!userMarker.current) {
+                // Custom Pulsing Icon for User
+                const pulsingIcon = L.divIcon({
+                    className: 'css-icon',
+                    html: '<div class="gps_ring"></div>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                });
+                userMarker.current = L.marker([avgPos.lat, avgPos.lng], { icon: pulsingIcon }).addTo(mapInstance.current);
+                
+                // Initial Fit Bounds
+                const group = new L.FeatureGroup([userMarker.current, targetCircle.current!]);
+                mapInstance.current.fitBounds(group.getBounds(), { padding: [50, 50] });
+            } else {
+                userMarker.current.setLatLng([avgPos.lat, avgPos.lng]);
+            }
+        }
+
+    }, [location, avgPos]);
 
     const handleSubmit = async () => {
-        if (!location || !currentPos || !activity) return;
+        if (!location || !avgPos || !activity) return;
         
-        const uid = user.UserID || user.userid;
-        if (!uid) {
-            alert('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+        // GPS Accuracy Check
+        if (gpsStatus.accuracy > 100) {
+            alert(`สัญญาณ GPS ไม่เสถียร (ความคลาดเคลื่อน ${gpsStatus.accuracy} เมตร) กรุณาหาสัญญาณที่ดีกว่านี้`);
             return;
         }
 
+        const uid = user.UserID || user.userid;
         setStatus('submitting');
         
         let photoUrl = '';
@@ -143,8 +326,8 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
             userId: uid,
             activityId: activity.ActivityID,
             locationId: location.LocationID,
-            userLat: currentPos.lat,
-            userLng: currentPos.lng,
+            userLat: avgPos.lat,
+            userLng: avgPos.lng,
             photoUrl,
             comment
         });
@@ -153,40 +336,14 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
             setStatus('success');
         } else {
             alert('บันทึกไม่สำเร็จ: ' + res.message);
-            // Re-eval GPS status based on current distance
-            const radius = parseFloat(location.RadiusMeters) || 100;
-            setStatus(distance > radius ? 'blocked' : 'ready');
+            setStatus('ready');
         }
     };
 
-    if (!activityId) return <div className="p-10 text-center">Invalid Activity ID</div>;
+    // --- RENDER ---
 
-    // --- VIEW: LOADING / VERIFYING ---
-    if (status === 'verifying') {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center font-kanit animate-in fade-in">
-                <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-                <h3 className="text-lg font-bold text-gray-800">กำลังตรวจสอบสถานะ...</h3>
-                <p className="text-gray-500 text-sm mt-1">ระบบกำลังเช็คประวัติการเข้าร่วมกิจกรรม</p>
-            </div>
-        );
-    }
+    if (!activity || !location) return <div className="p-10 text-center"><Loader2 className="animate-spin inline"/> Loading data...</div>;
 
-    if (!activity || !location) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
-                <AlertTriangle className="w-16 h-16 text-gray-300 mb-4" />
-                <h3 className="text-xl font-bold text-gray-800">ไม่พบกิจกรรม</h3>
-                <p className="text-gray-500 mt-2">อาจเป็นเพราะรหัสกิจกรรมไม่ถูกต้อง หรือข้อมูลยังไม่ถูกโหลด</p>
-                <div className="mt-4 text-xs text-gray-400">Activity ID: {activityId}</div>
-                <button onClick={() => navigate(-1)} className="mt-6 px-6 py-2 bg-white border rounded-lg shadow-sm font-bold text-gray-600">
-                    ย้อนกลับ
-                </button>
-            </div>
-        );
-    }
-
-    // --- VIEW: SUCCESS ---
     if (status === 'success') {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-green-50 p-6 text-center font-kanit">
@@ -194,202 +351,175 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                     <CheckCircle className="w-24 h-24 text-green-500 mx-auto mb-4" />
                     <h2 className="text-2xl font-bold text-gray-800">เช็คอินสำเร็จ!</h2>
                     <p className="text-gray-500 mt-2">ขอบคุณที่เข้าร่วมกิจกรรม<br/>"{activity.Name}"</p>
-                    <div className="mt-6 p-4 bg-green-50 rounded-xl text-green-800 text-sm">
-                        บันทึกเวลา: {new Date().toLocaleTimeString()}
+                    <div className="mt-6 p-4 bg-green-50 rounded-xl text-green-800 text-sm font-mono">
+                        {new Date().toLocaleString('th-TH')}
                     </div>
-                    <button onClick={() => navigate(-1)} className="mt-8 text-green-600 font-bold hover:underline">ปิดหน้าต่าง</button>
+                    <button onClick={() => navigate(-1)} className="mt-8 px-6 py-2 bg-green-600 text-white rounded-xl font-bold shadow-lg shadow-green-200">เสร็จสิ้น</button>
                 </div>
             </div>
         );
     }
 
-    // --- VIEW: ALREADY CHECKED IN ---
     if (status === 'already_checked' && checkedInDetail) {
-        const getImageUrl = (url: string) => url && !url.startsWith('http') ? `https://drive.google.com/thumbnail?id=${url}&sz=w1000` : url;
         return (
-            <div className="min-h-screen bg-gray-50 p-4 font-kanit flex flex-col items-center justify-center">
-                <div className="bg-white p-6 rounded-3xl shadow-lg border border-gray-100 w-full max-w-md animate-in fade-in">
-                    <div className="flex flex-col items-center text-center mb-6">
-                        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mb-3">
-                            <FileCheck className="w-8 h-8" />
-                        </div>
-                        <h2 className="text-xl font-bold text-gray-800">ลงทะเบียนแล้ว</h2>
-                        <p className="text-gray-500 text-sm mt-1">คุณได้ทำการเช็คอินกิจกรรมนี้ไปแล้ว</p>
+            <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center justify-center font-kanit">
+                <div className="bg-white p-8 rounded-3xl shadow-lg w-full max-w-md text-center">
+                    <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mb-4 mx-auto">
+                        <FileCheck className="w-10 h-10" />
                     </div>
+                    <h2 className="text-xl font-bold text-gray-800">ลงทะเบียนแล้ว</h2>
+                    <p className="text-gray-500 text-sm mt-1 mb-6">คุณได้ทำการเช็คอินกิจกรรมนี้ไปแล้ว</p>
+                    
+                    <div className="bg-gray-50 rounded-xl p-4 text-left text-sm space-y-2 mb-6">
+                        <div className="flex justify-between"><span className="text-gray-500">กิจกรรม</span><span className="font-bold">{activity.Name}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">เวลา</span><span>{new Date(checkedInDetail.Timestamp).toLocaleString('th-TH')}</span></div>
+                    </div>
+                    
+                    <button onClick={() => navigate(-1)} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-bold">ย้อนกลับ</button>
+                </div>
+            </div>
+        );
+    }
 
-                    <div className="space-y-4">
-                        <div className="p-4 bg-gray-50 rounded-xl space-y-2 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-gray-500">กิจกรรม:</span>
-                                <span className="font-bold text-gray-800 text-right">{activity.Name}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-500">สถานที่:</span>
-                                <span className="text-gray-800 text-right">{location.Name}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-500">เวลา:</span>
-                                <span className="text-gray-800 text-right">{new Date(checkedInDetail.Timestamp).toLocaleString('th-TH')}</span>
-                            </div>
-                            {checkedInDetail.Distance && (
-                                <div className="flex justify-between">
-                                    <span className="text-gray-500">ระยะห่าง:</span>
-                                    <span className="text-gray-800 text-right">{checkedInDetail.Distance} ม.</span>
+    const radius = parseFloat(location.RadiusMeters) || 100;
+    const isNearby = distance <= radius;
+    const gpsGood = gpsStatus.accuracy < 50;
+
+    return (
+        <div className="min-h-screen bg-white flex flex-col font-kanit relative">
+            <style>{`
+                .gps_ring {
+                    border: 3px solid #2563eb;
+                    -webkit-border-radius: 30px;
+                    height: 18px;
+                    width: 18px;
+                    -webkit-animation: pulsate 1s ease-out;
+                    -webkit-animation-iteration-count: infinite; 
+                    opacity: 0.0;
+                    background-color: #3b82f6;
+                    border-radius: 30px;
+                }
+                @keyframes pulsate {
+                    0% {-webkit-transform: scale(0.1, 0.1); opacity: 0.0;}
+                    50% {opacity: 1.0;}
+                    100% {-webkit-transform: scale(1.2, 1.2); opacity: 0.0;}
+                }
+            `}</style>
+
+            {isCameraOpen && <CustomCamera onCapture={(img) => { setPhoto(img); setIsCameraOpen(false); }} onClose={() => setIsCameraOpen(false)} />}
+
+            {/* --- 1. Interactive Map --- */}
+            <div className="relative h-[35vh] w-full bg-gray-200 shrink-0">
+                <div ref={mapContainerRef} className="absolute inset-0 z-0" />
+                <button onClick={() => navigate(-1)} className="absolute top-4 left-4 z-10 p-2 bg-white/90 backdrop-blur rounded-full shadow-md text-gray-700">
+                    <ArrowLeft className="w-6 h-6" />
+                </button>
+                
+                {/* GPS Status Badge */}
+                <div className={`absolute top-4 right-4 z-10 px-3 py-1.5 rounded-full backdrop-blur-md shadow-sm border flex items-center gap-2 text-xs font-bold ${gpsGood ? 'bg-green-500/90 text-white border-green-400' : 'bg-orange-500/90 text-white border-orange-400'}`}>
+                    {gpsGood ? <SignalHigh className="w-4 h-4" /> : <SignalLow className="w-4 h-4" />}
+                    <span>GPS: ±{gpsStatus.accuracy}m</span>
+                </div>
+            </div>
+
+            {/* --- 2. Main Content --- */}
+            <div className="flex-1 bg-white relative -mt-6 rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-10 p-6 flex flex-col overflow-y-auto">
+                
+                <div className="flex flex-col items-center mb-6">
+                    <div className="w-12 h-1.5 bg-gray-200 rounded-full mb-4"></div>
+                    <h1 className="text-xl font-bold text-gray-900 text-center leading-tight">{activity.Name}</h1>
+                    <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
+                        <MapPin className="w-3 h-3" /> {location.Name}
+                    </p>
+                </div>
+
+                {/* Distance Gauge */}
+                <div className="flex justify-center mb-8">
+                    <CircularDistance distance={distance} radius={radius} />
+                </div>
+
+                {/* Status Messages */}
+                {(!gpsStatus.ready) ? (
+                    <div className="text-center py-4 text-blue-600 animate-pulse flex flex-col items-center">
+                        <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                        กำลังจับสัญญาณดาวเทียม...
+                    </div>
+                ) : !isNearby ? (
+                    <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-start gap-3 mb-4">
+                        <AlertOctagon className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
+                        <div>
+                            <h3 className="font-bold text-red-700 text-sm">ยังไม่ถึงจุดเช็คอิน</h3>
+                            <p className="text-xs text-red-600 mt-1">กรุณาเดินเข้าสู่พื้นที่กิจกรรมให้ระยะห่างน้อยกว่า {radius} เมตร</p>
+                            <button 
+                                onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${location.Latitude},${location.Longitude}`)}
+                                className="mt-3 text-xs bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded-lg font-bold flex items-center shadow-sm w-fit"
+                            >
+                                <Navigation className="w-3 h-3 mr-1" /> นำทาง
+                            </button>
+                        </div>
+                    </div>
+                ) : !gpsGood ? (
+                    <div className="bg-orange-50 border border-orange-100 p-4 rounded-2xl flex items-start gap-3 mb-4">
+                        <Signal className="w-6 h-6 text-orange-500 shrink-0 mt-0.5" />
+                        <div>
+                            <h3 className="font-bold text-orange-700 text-sm">สัญญาณ GPS ไม่เสถียร</h3>
+                            <p className="text-xs text-orange-600 mt-1">ความคลาดเคลื่อน {gpsStatus.accuracy} เมตร (เกณฑ์ {50} เมตร) กรุณายืนในที่โล่งแจ้ง</p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        {/* 1. Camera Input */}
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">1. ถ่ายรูปยืนยัน (Selfie / Atmosphere)</label>
+                            {photo ? (
+                                <div className="relative w-full h-48 rounded-2xl overflow-hidden shadow-md group cursor-pointer" onClick={() => setIsCameraOpen(true)}>
+                                    <img src={photo} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <RefreshCw className="w-8 h-8 text-white" />
+                                    </div>
+                                    <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-md flex items-center">
+                                        <CheckCircle className="w-3 h-3 mr-1 text-green-400" /> บันทึกแล้ว
+                                    </div>
                                 </div>
+                            ) : (
+                                <button 
+                                    onClick={() => setIsCameraOpen(true)}
+                                    className="w-full h-48 bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center text-gray-400 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-500 transition-all group"
+                                >
+                                    <div className="bg-white p-4 rounded-full shadow-sm mb-3 group-hover:scale-110 transition-transform">
+                                        <Camera className="w-8 h-8 text-blue-600" />
+                                    </div>
+                                    <span className="text-sm font-bold">แตะเพื่อถ่ายรูป</span>
+                                    <span className="text-xs mt-1 opacity-70">ต้องถ่ายใหม่ ณ จุดเช็คอิน</span>
+                                </button>
                             )}
                         </div>
 
-                        {checkedInDetail.PhotoURL && (
-                            <div className="rounded-xl overflow-hidden border border-gray-200">
-                                <img src={getImageUrl(checkedInDetail.PhotoURL)} className="w-full h-48 object-cover" />
-                            </div>
-                        )}
-
-                        {checkedInDetail.Comment && (
-                            <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100 text-sm text-yellow-800 italic">
-                                "{checkedInDetail.Comment}"
-                            </div>
-                        )}
-                    </div>
-
-                    <button onClick={() => navigate(-1)} className="w-full mt-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">
-                        ย้อนกลับ
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    // --- VIEW: READY TO CHECK IN (Map & Form) ---
-    const radius = parseFloat(location.RadiusMeters) || 100;
-    const excessDistance = Math.max(0, distance - radius);
-
-    return (
-        <div className="min-h-screen bg-gray-50 flex flex-col font-kanit">
-            {/* Header / Map Preview */}
-            <div className={`relative h-72 w-full overflow-hidden transition-colors duration-500 ${status === 'blocked' ? 'bg-red-600' : 'bg-blue-600'}`}>
-                <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
-                
-                {/* Back Button */}
-                <div className="absolute top-4 left-4 z-20">
-                    <button onClick={() => navigate(-1)} className="p-2 bg-black/20 text-white rounded-full hover:bg-black/30 backdrop-blur-sm transition-colors">
-                        <ArrowLeft className="w-6 h-6" />
-                    </button>
-                </div>
-
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-white z-10 p-6 text-center">
-                     {status === 'locating' ? (
-                         <div className="flex flex-col items-center">
-                            <Loader2 className="w-16 h-16 animate-spin mb-4" />
-                            <p className="animate-pulse">กำลังค้นหาตำแหน่ง GPS...</p>
-                         </div>
-                     ) : status === 'blocked' ? (
-                         <>
-                            <div className="bg-white/20 p-4 rounded-full mb-2 animate-pulse">
-                                <AlertOctagon className="w-16 h-16" />
-                            </div>
-                            <h2 className="text-2xl font-black uppercase tracking-wider">อยู่นอกพื้นที่</h2>
-                            
-                            <div className="mt-4 bg-black/20 backdrop-blur-sm rounded-xl p-4 w-full max-w-xs border border-white/10">
-                                <div className="flex justify-between items-center text-sm mb-1">
-                                    <span className="opacity-80">ระยะห่างปัจจุบัน:</span>
-                                    <span className="font-bold text-xl">{distance} ม.</span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm mb-2 border-b border-white/20 pb-2">
-                                    <span className="opacity-80">รัศมีที่กำหนด:</span>
-                                    <span className="font-bold">{radius} ม.</span>
-                                </div>
-                                <div className="flex justify-between items-center text-red-200 font-bold">
-                                    <span>ต้องเข้าใกล้อีก:</span>
-                                    <span>{excessDistance} ม.</span>
-                                </div>
-                            </div>
-                         </>
-                     ) : (
-                         <>
-                            <div className="bg-white/20 p-4 rounded-full mb-4">
-                                <MapPin className="w-16 h-16" />
-                            </div>
-                            <h2 className="text-2xl font-black uppercase tracking-wider">พร้อมเช็คอิน</h2>
-                            <p className="text-blue-100 mt-1 font-medium">คุณอยู่ในพื้นที่กิจกรรมแล้ว ({distance} ม.)</p>
-                         </>
-                     )}
-                </div>
-            </div>
-
-            {/* Content Card */}
-            <div className="flex-1 -mt-10 px-4 pb-10">
-                <div className="bg-white rounded-3xl shadow-xl p-6 border border-gray-100 relative z-20">
-                    <div className="text-center mb-6">
-                        <h1 className="text-xl font-bold text-gray-900">{activity.Name}</h1>
-                        <p className="text-sm text-gray-500 flex items-center justify-center gap-1 mt-1">
-                            <MapPin className="w-3 h-3" /> {location.Name}
-                        </p>
-                    </div>
-
-                    {status === 'blocked' ? (
-                        <div className="text-center space-y-4 py-4">
-                            <div className="bg-red-50 text-red-700 p-4 rounded-xl text-sm border border-red-100">
-                                <p className="font-bold mb-1">⚠️ ยังไม่สามารถเช็คอินได้</p>
-                                <p>กรุณาเดินเข้าสู่พื้นที่กิจกรรมให้ระยะห่างน้อยกว่า <b>{radius} เมตร</b></p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${location.Latitude},${location.Longitude}`)} className="flex items-center justify-center w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-lg hover:bg-gray-900 text-sm">
-                                    <Navigation className="w-4 h-4 mr-2" /> นำทาง
-                                </button>
-                                <button onClick={() => window.location.reload()} className="flex items-center justify-center w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 text-sm">
-                                    <RefreshCw className="w-4 h-4 mr-2" /> รีโหลด GPS
-                                </button>
+                        {/* 2. Comment */}
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">2. ความคิดเห็น (Optional)</label>
+                            <div className="relative">
+                                <MessageSquare className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                                <input 
+                                    type="text" 
+                                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="พิมพ์ข้อความ..."
+                                    value={comment}
+                                    onChange={e => setComment(e.target.value)}
+                                />
                             </div>
                         </div>
-                    ) : (
-                        <div className="space-y-6">
-                            {/* Photo Input */}
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">1. ถ่ายรูปยืนยัน (Photo Proof)</label>
-                                <div className="flex justify-center">
-                                    <input type="file" accept="image/*" capture="environment" ref={fileInputRef} className="hidden" onChange={handlePhoto} />
-                                    {photo ? (
-                                        <div className="relative w-full h-48 rounded-xl overflow-hidden shadow-md cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                                            <img src={photo} className="w-full h-full object-cover" />
-                                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                                                <Camera className="w-8 h-8 text-white" />
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <button onClick={() => fileInputRef.current?.click()} className="w-full h-48 bg-gray-100 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 hover:border-blue-400 hover:text-blue-500 transition-all">
-                                            <Camera className="w-10 h-10 mb-2" />
-                                            <span className="text-sm font-medium">กดเพื่อถ่ายรูป</span>
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
 
-                            {/* Comment Input */}
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">2. ความคิดเห็น (Optional)</label>
-                                <div className="relative">
-                                    <MessageSquare className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                                    <textarea 
-                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                                        rows={3}
-                                        placeholder="แสดงความคิดเห็น หรือสิ่งที่ได้เรียนรู้..."
-                                        value={comment}
-                                        onChange={e => setComment(e.target.value)}
-                                    />
-                                </div>
-                            </div>
-
-                            <button 
-                                onClick={handleSubmit}
-                                disabled={status === 'submitting' || status === 'locating'}
-                                className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center disabled:opacity-70 disabled:scale-100"
-                            >
-                                {status === 'submitting' ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Send className="w-5 h-5 mr-2" /> ยืนยันการเช็คอิน</>}
-                            </button>
-                        </div>
-                    )}
-                </div>
+                        {/* Submit */}
+                        <button 
+                            onClick={handleSubmit}
+                            disabled={status === 'submitting'}
+                            className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center text-lg disabled:opacity-70 disabled:scale-100"
+                        >
+                            {status === 'submitting' ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Zap className="w-5 h-5 mr-2 fill-current" /> ยืนยันเช็คอิน</>}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );
