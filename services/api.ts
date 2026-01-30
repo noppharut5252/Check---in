@@ -1,5 +1,5 @@
 
-import { AppData, CheckInUser, CheckInLocation, CheckInActivity } from '../types';
+import { AppData, CheckInUser, CheckInLocation, CheckInActivity, PassportConfig } from '../types';
 
 const API_URL = "https://script.google.com/macros/s/AKfycbxyS_GG5snXmt2YTcMCMMYgfQZmzTynb-esxe8N2NBAdC1uGdIGGnPh7W0PuId4r4OF/exec";
 
@@ -49,7 +49,8 @@ export const fetchData = async (): Promise<AppData> => {
         venues: res.venues || [],
         judges: res.judges || [],
         activityStatus: res.activityStatus || [],
-        appConfig: res.appConfig
+        appConfig: res.appConfig,
+        passportConfig: res.passportConfig // Load passport data
     };
 };
 
@@ -295,4 +296,8 @@ export const getPrintConfig = async () => {
 
 export const savePrintConfig = async (config: any) => {
     return { status: 'success' };
+};
+
+export const savePassportConfig = async (config: PassportConfig) => {
+    return await apiRequest('savePassportConfig', { data: config });
 };
