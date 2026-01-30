@@ -23,7 +23,13 @@ export interface CheckInActivity {
   Capacity?: number;
   CurrentCount?: number;
   Image?: string; 
-  ManualOverride?: 'OPEN' | 'CLOSED' | ''; // New field for Emergency Toggle
+  ManualOverride?: 'OPEN' | 'CLOSED' | ''; 
+  // Added fields for extended management
+  Category?: string;
+  Levels?: string;
+  Mode?: string;
+  ReqTeachers?: number;
+  ReqStudents?: number;
 }
 
 export interface CheckInUser {
