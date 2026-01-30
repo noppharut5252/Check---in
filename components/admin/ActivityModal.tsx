@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { CheckInActivity, CheckInLocation } from '../../types';
-import { Loader2, Upload, X, Camera, Save, Layers, Users, Tag, Power, Image, Lock, ShieldAlert } from 'lucide-react';
+import { Loader2, Upload, X, Camera, Save, Layers, Users, Tag, Power, Image, Lock, ShieldAlert, Trash2 } from 'lucide-react';
 import { saveActivity, uploadImage } from '../../services/api';
 import { resizeImage, getThaiDateTimeValue, thaiInputToISO } from '../../services/utils';
 
@@ -81,6 +81,13 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
         finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
 
+    const handleRemoveImage = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (confirm('ต้องการลบรูปภาพปกนี้ใช่หรือไม่?')) {
+            setEditAct(prev => ({ ...prev, Image: '' }));
+        }
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -101,16 +108,28 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
                             onClick={() => fileInputRef.current?.click()}
                         >
                             {editAct.Image ? (
-                                <img src={editAct.Image} className="w-full h-full object-cover" alt="Preview" />
+                                <>
+                                    <img src={editAct.Image} className="w-full h-full object-cover" alt="Preview" />
+                                    {/* Delete Button Overlay */}
+                                    <button 
+                                        onClick={handleRemoveImage}
+                                        className="absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700 shadow-md z-10 transition-transform hover:scale-110"
+                                        title="ลบรูปภาพ"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </>
                             ) : (
                                 <div className="flex flex-col items-center text-gray-400">
                                     {isUploading ? <Loader2 className="w-8 h-8 animate-spin"/> : <Upload className="w-8 h-8 mb-2"/>}
                                     <span className="text-xs">{isUploading ? 'Uploading...' : 'รูปปกกิจกรรม (Optional)'}</span>
                                 </div>
                             )}
-                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Camera className="w-8 h-8 text-white" />
-                            </div>
+                            {!editAct.Image && (
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Camera className="w-8 h-8 text-white" />
+                                </div>
+                            )}
                         </div>
                         <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleActivityImageUpload} />
                     </div>
@@ -274,7 +293,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
                             onChange={e => setEditAct({...editAct, LocationID: e.target.value})}
                         >
                             <option value="">-- เลือกสถานที่ --</option>
-                            {locations.map(l => <option key={l.LocationID} value={l.LocationID}>{l.Name}</option>)}
+                            {(locations || []).map(l => <option key={l.LocationID} value={l.LocationID}>{l.Name}</option>)}
                         </select>
                     </div>
 
