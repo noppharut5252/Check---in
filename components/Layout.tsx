@@ -5,7 +5,7 @@ import { User, AppData, AppConfig } from '../types';
 import { 
     LayoutDashboard, MapPin, Users, Trophy, Edit3, Award, Printer, 
     FileBadge, IdCard, Gavel, Megaphone, School, UserCog, LogOut, 
-    Menu, X, UserCircle, LogIn, ChevronRight, ChevronLeft, Settings, BrainCircuit, MonitorPlay, GraduationCap, Map, ScanLine, QrCode
+    Menu, X, UserCircle, LogIn, ChevronRight, ChevronLeft, Settings, BrainCircuit, MonitorPlay, GraduationCap, Map, ScanLine, QrCode, ShieldCheck
 } from 'lucide-react';
 import { logoutLiff } from '../services/liff';
 import QRScannerModal from './QRScannerModal';
@@ -33,6 +33,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
 
   const allMenuItems = [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/home', alwaysVisible: true },
+      { id: 'passport', label: 'Digital Passport', icon: ShieldCheck, path: '/passport', configKey: 'menu_passport' },
       { id: 'live', label: 'Live Score', icon: MonitorPlay, path: '/live', configKey: 'menu_live' },
       { id: 'teams', label: 'ทีมแข่งขัน', icon: Users, path: '/teams', configKey: 'menu_teams' },
       { id: 'venues', label: 'สนาม/วันแข่ง', icon: MapPin, path: '/venues', configKey: 'menu_venues' },
@@ -73,11 +74,11 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
   }, [isAdminOrArea, role, config]);
 
   // Split Mobile Nav Items for Layout (2 Left, Center Button, 2 Right)
-  const mobileNavItems = [
+  const mobileNavItems: { id: string; label: string; icon: any; path?: string; action?: () => void }[] = [
       { id: 'home', label: 'หน้าแรก', icon: LayoutDashboard, path: '/home' },
       { id: 'checkin', label: 'รายการ', icon: MapPin, path: '/checkin-dashboard' },
       // CENTER SCAN BUTTON HERE
-      { id: 'menu', label: 'เมนู', icon: Menu, action: () => setIsSidebarOpen(true) },
+      { id: 'passport', label: 'Passport', icon: ShieldCheck, path: '/passport' },
       { id: 'profile', label: 'บัญชี', icon: UserCircle, path: '/profile' }
   ];
 
@@ -264,7 +265,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                     />
                     <span className="font-bold text-gray-800">UprightSchool</span>
                 </div>
-                {isLoggedIn && (
+                {isLoggedIn ? (
                     <div className="flex items-center gap-3">
                         <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 p-1">
                             <LogOut className="w-5 h-5" />
@@ -273,6 +274,8 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                             <img src={userProfile?.PictureUrl || userProfile?.pictureUrl || "https://cdn-icons-png.flaticon.com/512/3135/3135768.png"} className="w-full h-full object-cover" />
                         </div>
                     </div>
+                ) : (
+                    <button onClick={() => handleNav('/login')} className="text-blue-600 font-bold text-sm">เข้าสู่ระบบ</button>
                 )}
             </header>
 
