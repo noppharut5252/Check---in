@@ -277,6 +277,33 @@ export interface CertificateTemplate {
   fontSignatures?: string;
 }
 
+// --- Passport & Gamification Types ---
+
+export type PassportConditionType = 'specific_activity' | 'total_count' | 'category_count';
+
+export interface PassportRequirement {
+    id: string;
+    type: PassportConditionType;
+    label: string; // Description shown to user
+    targetId?: string; // ActivityID or Category Name
+    targetValue: number; // e.g. 1 (for specific) or 10 (for count)
+}
+
+export interface PassportMission {
+    id: string;
+    date: string; // YYYY-MM-DD
+    title: string;
+    description?: string;
+    requirements: PassportRequirement[];
+    rewardColor: string; // Hex color or class
+    rewardLabel: string; // e.g. "Gold Stamp"
+    stampImage?: string; // Optional custom stamp URL
+}
+
+export interface PassportConfig {
+    missions: PassportMission[];
+}
+
 export interface JudgeConfig extends CertificateTemplate {
   officeName?: string;
   commandNumber?: string;
@@ -304,6 +331,7 @@ export interface AppConfig {
   menu_schools?: boolean;
   menu_users?: boolean;
   menu_summary?: boolean;
+  menu_passport?: boolean; // New Menu
   [key: string]: boolean | undefined;
 }
 
@@ -322,4 +350,5 @@ export interface AppData {
   judges: Judge[];
   activityStatus?: any[];
   appConfig?: AppConfig;
+  passportConfig?: PassportConfig; // New Data Field
 }
