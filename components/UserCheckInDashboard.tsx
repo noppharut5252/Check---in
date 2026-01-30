@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AppData, CheckInUser } from '../types';
-import { MapPin, Navigation, ChevronRight, Search, LocateFixed, Loader2, Clock, Users, AlertCircle, QrCode, ScanLine, History, LayoutGrid } from 'lucide-react';
+import { MapPin, Navigation, Search, LocateFixed, Loader2, Clock, Users, QrCode, ScanLine, History, LayoutGrid, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import QRScannerModal from './QRScannerModal';
 import CheckInHistory from './CheckInHistory';
@@ -18,8 +18,11 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
     const [loadingLocation, setLoadingLocation] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isScannerOpen, setIsScannerOpen] = useState(false);
+    
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
-    // Ensure we handle the undefined case correctly (default to true)
     const showHistory = data.appConfig ? (data.appConfig.menu_checkin_history !== false) : true;
 
     useEffect(() => {
@@ -32,6 +35,11 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
         } else { setLoadingLocation(false); }
     }, []);
 
+    // Reset pagination when search changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
+
     const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
         const R = 6371e3;
         const φ1 = lat1 * Math.PI / 180;
@@ -42,7 +50,7 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     };
 
-    const activitiesList = React.useMemo(() => {
+    const activitiesList = useMemo(() => {
         const list = data.checkInActivities || [];
         const locs = data.checkInLocations || [];
         const now = new Date();
@@ -62,13 +70,20 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
             let status = 'Available';
             let statusColor = 'text-green-600 bg-green-50';
             
-            if (act.StartDateTime && new Date(act.StartDateTime) > now) {
-                status = 'Not Started'; statusColor = 'text-orange-600 bg-orange-50';
-            } else if (act.EndDateTime && new Date(act.EndDateTime) < now) {
-                status = 'Ended'; statusColor = 'text-gray-500 bg-gray-100';
-            } else if (act.Capacity && act.Capacity > 0) {
-                if ((act.CurrentCount || 0) >= act.Capacity) {
-                    status = 'Full'; statusColor = 'text-red-600 bg-red-50';
+            // Manual Override takes precedence
+            if (act.ManualOverride === 'CLOSED') {
+                status = 'Ended'; statusColor = 'text-red-600 bg-red-50';
+            } else if (act.ManualOverride === 'OPEN') {
+                status = 'Available'; statusColor = 'text-green-600 bg-green-50';
+            } else {
+                if (act.StartDateTime && new Date(act.StartDateTime) > now) {
+                    status = 'Not Started'; statusColor = 'text-orange-600 bg-orange-50';
+                } else if (act.EndDateTime && new Date(act.EndDateTime) < now) {
+                    status = 'Ended'; statusColor = 'text-gray-500 bg-gray-100';
+                } else if (act.Capacity && act.Capacity > 0) {
+                    if ((act.CurrentCount || 0) >= act.Capacity) {
+                        status = 'Full'; statusColor = 'text-red-600 bg-red-50';
+                    }
                 }
             }
 
@@ -92,8 +107,14 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
         });
     }, [data.checkInActivities, data.checkInLocations, currentPos, searchTerm]);
 
+    // Pagination Logic
+    const totalPages = Math.ceil(activitiesList.length / itemsPerPage);
+    const paginatedActivities = activitiesList.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
     const handleScanResult = (code: string) => {
-        // Expected code: URL like .../checkin/<ActivityID> or just <ActivityID>
         setIsScannerOpen(false);
         let activityId = code;
         if (code.includes('/checkin/')) {
@@ -188,7 +209,7 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            {activitiesList.map(act => {
+                            {paginatedActivities.map(act => {
                                 const isAvailable = act.computedStatus === 'Available';
                                 return (
                                     <div 
@@ -215,7 +236,7 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
                                                     {act.StartDateTime && (
                                                         <span className="flex items-center bg-gray-50 px-1.5 py-0.5 rounded">
                                                             <Clock className="w-3 h-3 mr-1"/> 
-                                                            {new Date(act.StartDateTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                            {new Date(act.StartDateTime).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}
                                                         </span>
                                                     )}
                                                     {act.Capacity && act.Capacity > 0 && (
@@ -237,6 +258,31 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
                                     </div>
                                 );
                             })}
+                        </div>
+                    )}
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                        <div className="flex justify-between items-center mt-6 px-2">
+                            <button 
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="p-2 rounded-lg bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600"
+                            >
+                                <ChevronLeft className="w-5 h-5" />
+                            </button>
+                            
+                            <span className="text-sm text-gray-500 font-medium">
+                                หน้า {currentPage} / {totalPages}
+                            </span>
+
+                            <button 
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                className="p-2 rounded-lg bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600"
+                            >
+                                <ChevronRight className="w-5 h-5" />
+                            </button>
                         </div>
                     )}
                 </div>
