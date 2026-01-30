@@ -7,9 +7,19 @@ interface PrintConfig {
     theme?: string; // 'blue', 'red', 'green', 'orange', 'black'
     note?: string;
     // New Configs
-    fontFamily?: string;
     margins?: { top: number; bottom: number; left: number; right: number };
-    fontSizes?: { header: number; name: number; note: number };
+    fonts?: {
+        header: string;
+        subheader: string;
+        name: string;
+        note: string;
+    };
+    fontSizes?: { 
+        header: number; 
+        subheader: number; 
+        name: number; 
+        note: number; 
+    };
 }
 
 export const generatePosterHTML = async (
@@ -21,9 +31,9 @@ export const generatePosterHTML = async (
         layout = 'poster', 
         theme = 'blue', 
         note = '',
-        fontFamily = 'Kanit',
         margins = { top: 0, bottom: 0, left: 0, right: 0 },
-        fontSizes = { header: 42, name: 32, note: 18 }
+        fonts = { header: 'Kanit', subheader: 'Kanit', name: 'Kanit', note: 'Kanit' },
+        fontSizes = { header: 42, subheader: 18, name: 32, note: 18 }
     } = config;
 
     // Theme Colors
@@ -51,18 +61,11 @@ export const generatePosterHTML = async (
         body { 
             margin: 0; 
             padding: 0; 
-            font-family: '${fontFamily}', sans-serif; 
             background: #fff; 
             -webkit-print-color-adjust: exact; 
             print-color-adjust: exact; 
         }
         
-        /* 
-           Crucial Fix for Blank Pages:
-           1. Height 296mm instead of 297mm to prevent slight overflow triggering new page.
-           2. Overflow hidden to clip any excess content.
-           3. Padding handles the custom margins.
-        */
         .page { 
             width: 210mm; 
             height: 296mm; 
@@ -79,11 +82,9 @@ export const generatePosterHTML = async (
         
         .page:last-child { page-break-after: avoid; }
         
-        /* Container inside the page (respects margins) */
         .page-content-wrapper {
             width: 100%;
             height: 100%;
-            border: 1px dashed #e2e8f0; /* Helper border to see print area, can be removed */
             border: none;
             display: flex;
             flex-direction: column;
@@ -94,41 +95,101 @@ export const generatePosterHTML = async (
             border: 2px solid #e2e8f0; 
             display: flex; flex-direction: column; align-items: center; text-align: center; 
             position: relative; overflow: hidden;
-            flex: 1; /* Take available space */
+            flex: 1; 
         }
         
         /* Header Style */
         .header { background: ${t.primary}; width: 100%; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; }
-        .header h1 { margin: 0; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
-        .header p { margin: 5px 0 0; opacity: 0.9; font-weight: 300; }
+        
+        /* Specific Font Application */
+        .header h1 { 
+            margin: 0; 
+            font-weight: 800; 
+            text-transform: uppercase; 
+            letter-spacing: 1px;
+            font-family: '${fonts.header}', sans-serif;
+        }
+        .header p { 
+            margin: 5px 0 0; 
+            opacity: 0.9; 
+            font-weight: 300;
+            font-family: '${fonts.subheader}', sans-serif;
+        }
         
         /* Content Style */
         .content { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; padding: 10px; box-sizing: border-box; }
-        .act-name { font-weight: 800; color: ${t.secondary}; line-height: 1.2; margin-bottom: 10px; }
+        
+        .act-name { 
+            font-weight: 800; 
+            color: ${t.secondary}; 
+            line-height: 1.2; 
+            margin-bottom: 10px;
+            font-family: '${fonts.name}', sans-serif;
+        }
+        
         .qr-box { border: 4px dashed ${t.primary}40; border-radius: 20px; padding: 10px; background: white; margin: 10px 0; }
         .qr-img { object-fit: contain; display: block; }
-        .scan-text { color: ${t.primary}; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
         
-        .badge { background: ${t.badge}; color: ${t.secondary}; padding: 8px 20px; border-radius: 50px; font-weight: bold; display: inline-flex; align-items: center; margin-top: 10px; }
-        .note { margin-top: 10px; font-weight: bold; color: #d97706; border: 2px solid #fbbf24; padding: 5px 15px; border-radius: 8px; background-color: #fffbeb; font-size: 0.8em; }
+        .scan-text { 
+            color: ${t.primary}; 
+            font-weight: 800; 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            margin-top: 5px;
+            font-family: '${fonts.note}', sans-serif;
+        }
         
-        .footer { width: 100%; background: ${t.bg}; border-top: 1px solid ${t.badge}; padding: 10px; font-size: 0.7em; color: ${t.secondary}aa; }
+        .badge { 
+            background: ${t.badge}; 
+            color: ${t.secondary}; 
+            padding: 8px 20px; 
+            border-radius: 50px; 
+            font-weight: bold; 
+            display: inline-flex; 
+            align-items: center; 
+            margin-top: 10px;
+            font-family: '${fonts.note}', sans-serif;
+        }
+        
+        .note { 
+            margin-top: 10px; 
+            font-weight: bold; 
+            color: #d97706; 
+            border: 2px solid #fbbf24; 
+            padding: 5px 15px; 
+            border-radius: 8px; 
+            background-color: #fffbeb; 
+            font-size: 0.8em;
+            font-family: '${fonts.note}', sans-serif;
+        }
+        
+        .footer { 
+            width: 100%; 
+            background: ${t.bg}; 
+            border-top: 1px solid ${t.badge}; 
+            padding: 10px; 
+            font-size: 0.7em; 
+            color: ${t.secondary}aa; 
+            font-family: '${fonts.note}', sans-serif;
+        }
         
         .no-print { position: fixed; top: 10px; right: 10px; z-index: 9999; }
     `;
 
-    // Layout Specific CSS
+    // Layout Specific CSS - Applying Font Sizes relative to Base Config or Absolute if 1:1
+    // Logic: We treat the inputs as "Base Size" (for Poster), then scale down for smaller layouts.
+    
     let layoutCSS = '';
     let pagesHTML = '';
 
     if (layout === 'poster') {
-        // 1 per Page (A4)
+        // 1 per Page (A4) - Base Sizes
         layoutCSS = `
             .page-content-wrapper { display: flex; }
             .card { width: 100%; height: 100%; border: none; }
             .header { height: 20%; clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%); }
             .header h1 { font-size: ${fontSizes.header}pt; }
-            .header p { font-size: ${fontSizes.header * 0.45}pt; }
+            .header p { font-size: ${fontSizes.subheader}pt; }
             .act-name { font-size: ${fontSizes.name}pt; margin-bottom: 20px; }
             .qr-box { padding: 20px; border-width: 6px; }
             .qr-img { width: 120mm; height: 120mm; }
@@ -156,22 +217,20 @@ export const generatePosterHTML = async (
         `).join('');
 
     } else if (layout === 'half') {
-        // 2 per Page (A5 Landscape x 2)
-        // Adjust for margins: Use grid gap or flex
+        // 2 per Page (A5) - Scaled ~60-70%
         layoutCSS = `
             .page-content-wrapper { display: grid; grid-template-rows: 1fr 1fr; gap: 5mm; }
             .card { border: 1px dashed #ccc; border-radius: 8px; }
             .header { height: 18%; clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%); }
             .header h1 { font-size: ${fontSizes.header * 0.6}pt; }
-            .header p { font-size: ${fontSizes.header * 0.3}pt; }
+            .header p { font-size: ${fontSizes.subheader * 0.7}pt; }
             .act-name { font-size: ${fontSizes.name * 0.7}pt; }
             .qr-img { width: 65mm; height: 65mm; }
-            .scan-text { font-size: 14pt; }
+            .scan-text { font-size: ${fontSizes.name * 0.5}pt; }
             .badge { font-size: ${fontSizes.note}pt; }
             .note { font-size: ${fontSizes.note * 0.8}pt; }
         `;
         
-        // Chunk by 2
         for (let i = 0; i < items.length; i += 2) {
             const chunk = items.slice(i, i + 2);
             pagesHTML += `<div class="page"><div class="page-content-wrapper">`;
@@ -194,23 +253,22 @@ export const generatePosterHTML = async (
         }
 
     } else if (layout === 'card') {
-        // 4 per Page (A6 x 4)
+        // 4 per Page (A6) - Scaled ~50%
         layoutCSS = `
             .page-content-wrapper { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 5mm; }
             .card { border-radius: 15px; border: 1px solid #ddd; box-shadow: none; }
             .header { height: 45px; border-radius: 0 0 50% 50% / 10px; }
-            .header h1 { font-size: 14pt; }
+            .header h1 { font-size: ${fontSizes.header * 0.4}pt; }
             .header p { display: none; }
             .act-name { font-size: ${fontSizes.name * 0.5}pt; margin-bottom: 5px; height: 40px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
             .qr-box { padding: 5px; border-width: 2px; margin: 5px 0; }
             .qr-img { width: 45mm; height: 45mm; }
             .scan-text { font-size: 10pt; }
-            .badge { font-size: 9pt; padding: 4px 10px; margin-top: 5px; max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .badge { font-size: ${fontSizes.note * 0.8}pt; padding: 4px 10px; margin-top: 5px; max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .note { font-size: 8pt; padding: 2px 8px; margin-top: 5px; }
             .footer { padding: 5px; font-size: 8pt; }
         `;
 
-        // Chunk by 4
         for (let i = 0; i < items.length; i += 4) {
             const chunk = items.slice(i, i + 4);
             pagesHTML += `<div class="page"><div class="page-content-wrapper">`;
@@ -235,7 +293,7 @@ export const generatePosterHTML = async (
         <html>
             <head>
                 <title>Print QR Posters</title>
-                <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600;800&family=Sarabun:wght@400;700&family=Chakra+Petch:wght@400;700&family=Mali:wght@400;700&display=swap" rel="stylesheet">
+                <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600;800&family=Sarabun:wght@400;700&family=Chakra+Petch:wght@400;700&family=Mali:wght@400;700&family=Charmonman:wght@400;700&family=Srisakdi:wght@400;700&family=Bai+Jamjuree:wght@400;600&family=Kodchasan:wght@400;600&family=Thasadith:wght@400;700&display=swap" rel="stylesheet">
                 <style>
                     ${baseCSS}
                     ${layoutCSS}
