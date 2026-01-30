@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { CheckInActivity, CheckInLocation } from '../../types';
-import { Loader2, Upload, X, Camera, Save } from 'lucide-react';
+import { Loader2, Upload, X, Camera, Save, Layers, Users, Tag, Power } from 'lucide-react';
 import { saveActivity, uploadImage } from '../../services/api';
-import { resizeImage } from '../../services/utils';
+import { resizeImage, getThaiDateTimeValue, thaiInputToISO } from '../../services/utils';
 
 interface ActivityModalProps {
     isOpen: boolean;
@@ -12,6 +12,16 @@ interface ActivityModalProps {
     locations: CheckInLocation[];
     onSuccess: () => void;
 }
+
+const CATEGORY_OPTIONS = [
+    'วิทยาศาสตร์', 'คณิตศาสตร์', 'ภาษาไทย', 'ภาษาอังกฤษ', 'สังคมศึกษา',
+    'ศิลปะ', 'ดนตรี', 'นาฏศิลป์', 'การงานอาชีพ', 'คอมพิวเตอร์', 'หุ่นยนต์',
+    'ปฐมวัย', 'กิจกรรมพัฒนาผู้เรียน'
+];
+
+const LEVEL_OPTIONS = [
+    'ป.1-3', 'ป.4-6', 'ม.1-3', 'ม.4-6', 'ป.1-6', 'ม.1-6', 'ปฐมวัย'
+];
 
 const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialData, locations, onSuccess }) => {
     const [editAct, setEditAct] = useState<Partial<CheckInActivity>>({});
@@ -22,13 +32,6 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
     useEffect(() => {
         if (isOpen) setEditAct(initialData);
     }, [isOpen, initialData]);
-
-    const getSafeDateValue = (dateStr?: string) => {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return '';
-        return d.toISOString().slice(0, 16);
-    };
 
     const handleSaveActivity = async () => {
         setIsSaving(true);
@@ -69,7 +72,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
                     </button>
                 </div>
                 
-                <div className="space-y-4 flex-1 overflow-y-auto pr-1">
+                <div className="space-y-4 flex-1 overflow-y-auto pr-1 custom-scrollbar">
                     {/* Image Upload */}
                     <div className="flex justify-center">
                         <div 
@@ -91,44 +94,111 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
                         <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleActivityImageUpload} />
                     </div>
 
-                    <input className="w-full border rounded-lg p-3" placeholder="ชื่อกิจกรรม" value={editAct.Name || ''} onChange={e => setEditAct({...editAct, Name: e.target.value})} />
-                    <select 
-                        className="w-full border rounded-lg p-3"
-                        value={editAct.LocationID || ''}
-                        onChange={e => setEditAct({...editAct, LocationID: e.target.value})}
-                    >
-                        <option value="">-- เลือกสถานที่ --</option>
-                        {locations.map(l => <option key={l.LocationID} value={l.LocationID}>{l.Name}</option>)}
-                    </select>
-                    <textarea className="w-full border rounded-lg p-3" placeholder="รายละเอียด" value={editAct.Description || ''} onChange={e => setEditAct({...editAct, Description: e.target.value})} />
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1">ชื่อกิจกรรม</label>
+                        <input className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="ระบุชื่อกิจกรรม..." value={editAct.Name || ''} onChange={e => setEditAct({...editAct, Name: e.target.value})} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1 flex items-center"><Tag className="w-3 h-3 mr-1"/> หมวดหมู่ (Category)</label>
+                            <input 
+                                list="category-options"
+                                className="w-full border border-gray-300 rounded-lg p-2 text-sm" 
+                                placeholder="เลือกหรือพิมพ์เอง..." 
+                                value={editAct.Category || ''} 
+                                onChange={e => setEditAct({...editAct, Category: e.target.value})} 
+                            />
+                            <datalist id="category-options">
+                                {CATEGORY_OPTIONS.map(c => <option key={c} value={c} />)}
+                            </datalist>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1 flex items-center"><Users className="w-3 h-3 mr-1"/> รูปแบบ (Mode)</label>
+                            <select 
+                                className="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white" 
+                                value={editAct.Mode || ''} 
+                                onChange={e => setEditAct({...editAct, Mode: e.target.value})}
+                            >
+                                <option value="">-- เลือก --</option>
+                                <option value="Individual">เดี่ยว (Individual)</option>
+                                <option value="Team">ทีม (Team)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1 flex items-center"><Layers className="w-3 h-3 mr-1"/> ระดับชั้น (Levels)</label>
+                            <input 
+                                list="level-options"
+                                className="w-full border border-gray-300 rounded-lg p-2 text-sm" 
+                                placeholder="เลือกหรือพิมพ์เอง..." 
+                                value={editAct.Levels || ''} 
+                                onChange={e => setEditAct({...editAct, Levels: e.target.value})} 
+                            />
+                            <datalist id="level-options">
+                                {LEVEL_OPTIONS.map(l => <option key={l} value={l} />)}
+                            </datalist>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1 flex items-center"><Power className="w-3 h-3 mr-1"/> สถานะ (Status)</label>
+                            <select 
+                                className="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white" 
+                                value={editAct.Status || 'Active'} 
+                                onChange={e => setEditAct({...editAct, Status: e.target.value})}
+                            >
+                                <option value="Active">Active (เปิดใช้งาน)</option>
+                                <option value="Inactive">Inactive (ปิดใช้งาน)</option>
+                                <option value="Completed">Completed (เสร็จสิ้น)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1">สถานที่ (Location)</label>
+                        <select 
+                            className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                            value={editAct.LocationID || ''}
+                            onChange={e => setEditAct({...editAct, LocationID: e.target.value})}
+                        >
+                            <option value="">-- เลือกสถานที่ --</option>
+                            {locations.map(l => <option key={l.LocationID} value={l.LocationID}>{l.Name}</option>)}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1">รายละเอียด</label>
+                        <textarea className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none h-20" placeholder="รายละเอียดเพิ่มเติม..." value={editAct.Description || ''} onChange={e => setEditAct({...editAct, Description: e.target.value})} />
+                    </div>
                     
-                    <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                    <div className="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4">
                         <div>
                             <label className="text-xs font-bold text-gray-500 mb-1 block">เวลาเริ่ม (Start)</label>
                             <input 
                                 type="datetime-local" 
-                                className="w-full border rounded-lg p-2 text-sm" 
-                                value={getSafeDateValue(editAct.StartDateTime)}
-                                onChange={e => setEditAct({...editAct, StartDateTime: e.target.value ? new Date(e.target.value).toISOString() : ''})}
+                                className="w-full border border-gray-300 rounded-lg p-2 text-sm" 
+                                value={getThaiDateTimeValue(editAct.StartDateTime)}
+                                onChange={e => setEditAct({...editAct, StartDateTime: thaiInputToISO(e.target.value)})}
                             />
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-500 mb-1 block">เวลาสิ้นสุด (End)</label>
                             <input 
                                 type="datetime-local" 
-                                className="w-full border rounded-lg p-2 text-sm" 
-                                value={getSafeDateValue(editAct.EndDateTime)}
-                                onChange={e => setEditAct({...editAct, EndDateTime: e.target.value ? new Date(e.target.value).toISOString() : ''})}
+                                className="w-full border border-gray-300 rounded-lg p-2 text-sm" 
+                                value={getThaiDateTimeValue(editAct.EndDateTime)}
+                                onChange={e => setEditAct({...editAct, EndDateTime: thaiInputToISO(e.target.value)})}
                             />
                         </div>
                     </div>
 
-                    <div className="border-t pt-2">
+                    <div className="border-t border-gray-100 pt-2">
                         <label className="text-xs font-bold text-gray-500 mb-1 block">จำนวนรับ (Capacity)</label>
                         <div className="flex items-center gap-2">
                             <input 
                                 type="number" 
-                                className="flex-1 border rounded-lg p-2 text-sm" 
+                                className="flex-1 border border-gray-300 rounded-lg p-2 text-sm" 
                                 placeholder="0 = ไม่จำกัด"
                                 value={editAct.Capacity || ''}
                                 onChange={e => setEditAct({...editAct, Capacity: parseInt(e.target.value) || 0})}
@@ -139,13 +209,14 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
                 </div>
 
                 <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-gray-100 shrink-0">
-                    <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">ยกเลิก</button>
+                    <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">ยกเลิก</button>
                     <button 
                         onClick={handleSaveActivity} 
                         disabled={isSaving || isUploading}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center"
+                        className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center shadow-md hover:bg-blue-700 disabled:opacity-70"
                     >
-                        {isSaving && <Loader2 className="w-4 h-4 animate-spin mr-2"/>} บันทึก
+                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Save className="w-4 h-4 mr-2"/>} 
+                        บันทึก
                     </button>
                 </div>
             </div>
