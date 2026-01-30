@@ -1,8 +1,9 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AppData, CheckInActivity } from '../../types';
-import { Printer, FileText, MapPin, QrCode, Download, Loader2, Search, CheckSquare, Square, Filter, Palette, LayoutGrid, Type, Scaling, ArrowUpFromLine, ArrowDownToLine, ArrowLeftFromLine, ArrowRightFromLine, Sliders } from 'lucide-react';
+import { Printer, FileText, MapPin, QrCode, Download, Loader2, Search, CheckSquare, Square, Filter, Palette, LayoutGrid, Type, Scaling, ArrowUpFromLine, ArrowDownToLine, ArrowLeftFromLine, ArrowRightFromLine, Sliders, Save } from 'lucide-react';
 import { generatePosterHTML } from '../../services/printUtils';
+import { getPrintConfig, savePrintConfig } from '../../services/api';
 
 // Declare html2pdf
 declare var html2pdf: any;
@@ -50,17 +51,41 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
     });
     
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isSavingConfig, setIsSavingConfig] = useState(false);
     const [showConfigPanel, setShowConfigPanel] = useState(false);
+
+    // Load Config on Mount
+    useEffect(() => {
+        const loadConfig = async () => {
+            try {
+                const savedConfigs = await getPrintConfig();
+                if (savedConfigs && savedConfigs.posterConfig) {
+                    // Merge saved config with defaults to ensure all fields exist
+                    setConfig(prev => ({
+                        ...prev,
+                        ...savedConfigs.posterConfig,
+                        // Ensure nested objects are merged correctly if partial
+                        margins: { ...prev.margins, ...(savedConfigs.posterConfig.margins || {}) },
+                        fonts: { ...prev.fonts, ...(savedConfigs.posterConfig.fonts || {}) },
+                        fontSizes: { ...prev.fontSizes, ...(savedConfigs.posterConfig.fontSizes || {}) }
+                    }));
+                }
+            } catch (e) {
+                console.error("Failed to load print config", e);
+            }
+        };
+        loadConfig();
+    }, []);
 
     // Derived Data
     const filteredActivities = useMemo(() => {
-        return data.checkInActivities.filter(act => {
+        return (data.checkInActivities || []).filter(act => {
             const matchesSearch = act.Name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                                  data.checkInLocations.find(l => l.LocationID === act.LocationID)?.Name.toLowerCase().includes(searchQuery.toLowerCase());
+                                  (data.checkInLocations || []).find(l => l.LocationID === act.LocationID)?.Name.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesLoc = locationFilter === 'All' || act.LocationID === locationFilter;
             return matchesSearch && matchesLoc;
         });
-    }, [data.checkInActivities, searchQuery, locationFilter]);
+    }, [data.checkInActivities, data.checkInLocations, searchQuery, locationFilter]);
 
     // Handlers
     const handleSelectAll = () => {
@@ -79,7 +104,7 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
     };
 
     const getSelectedActivities = () => {
-        return data.checkInActivities.filter(a => selectedIds.has(a.ActivityID));
+        return (data.checkInActivities || []).filter(a => selectedIds.has(a.ActivityID));
     };
 
     const updateMargin = (key: keyof typeof config.margins, val: number) => {
@@ -101,6 +126,19 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
             ...prev,
             fontSizes: { ...prev.fontSizes, [key]: val }
         }));
+    };
+
+    const handleSaveConfig = async () => {
+        setIsSavingConfig(true);
+        try {
+            await savePrintConfig(config);
+            alert('บันทึกการตั้งค่าเรียบร้อยแล้ว');
+        } catch (e) {
+            console.error(e);
+            alert('เกิดข้อผิดพลาดในการบันทึก');
+        } finally {
+            setIsSavingConfig(false);
+        }
     };
 
     // Helper Component for Font Section
@@ -187,7 +225,7 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
                             onChange={(e) => setLocationFilter(e.target.value)}
                         >
                             <option value="All">ทุกสถานที่</option>
-                            {data.checkInLocations.map(l => <option key={l.LocationID} value={l.LocationID}>{l.Name}</option>)}
+                            {(data.checkInLocations || []).map(l => <option key={l.LocationID} value={l.LocationID}>{l.Name}</option>)}
                         </select>
                     </div>
                 </div>
@@ -207,6 +245,14 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
                         <h4 className="text-indigo-800 font-bold text-sm flex items-center">
                             <LayoutGrid className="w-4 h-4 mr-2" /> ตั้งค่ารูปแบบการพิมพ์ (Print Configuration)
                         </h4>
+                        <button 
+                            onClick={handleSaveConfig}
+                            disabled={isSavingConfig}
+                            className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 flex items-center disabled:opacity-50 shadow-sm"
+                        >
+                            {isSavingConfig ? <Loader2 className="w-3 h-3 animate-spin mr-1"/> : <Save className="w-3 h-3 mr-1"/>}
+                            บันทึกค่า (Save)
+                        </button>
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -289,7 +335,7 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
                                 <div className="text-sm font-bold text-gray-800 truncate">{act.Name}</div>
                                 <div className="text-xs text-gray-500 flex items-center mt-0.5">
                                     <MapPin className="w-3 h-3 mr-1" />
-                                    {data.checkInLocations.find(l => l.LocationID === act.LocationID)?.Name || '-'}
+                                    {(data.checkInLocations || []).find(l => l.LocationID === act.LocationID)?.Name || '-'}
                                 </div>
                             </div>
                             <div className="text-right">
