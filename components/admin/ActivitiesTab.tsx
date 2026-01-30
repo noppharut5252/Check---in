@@ -1,8 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { AppData, CheckInActivity } from '../../types';
-import { Search, Filter, Plus, Activity, MapPin, Clock, Edit2, Trash2, History } from 'lucide-react';
-import { deleteActivity } from '../../services/api';
+import { Search, Filter, Plus, Activity, MapPin, Clock, Edit2, Trash2, History, Upload, Loader2, Power, AlertTriangle } from 'lucide-react';
+import { deleteActivity, saveActivity } from '../../services/api';
 import ActivityModal from './ActivityModal';
 import ConfirmationModal from '../ConfirmationModal';
 
@@ -19,10 +19,18 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     const [editAct, setEditAct] = useState<Partial<CheckInActivity>>({});
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; id: string; title: string }>({ isOpen: false, id: '', title: '' });
     const [isDeleting, setIsDeleting] = useState(false);
+    
+    // Import State
+    const [isImporting, setIsImporting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const isDateValid = (d: any) => d && !isNaN(new Date(d).getTime());
 
     const getActivityStatus = (act: CheckInActivity) => {
+        // Emergency Override Check
+        if (act.ManualOverride === 'CLOSED') return { label: 'ปิดชั่วคราว (Manual)', color: 'bg-red-500 text-white', key: 'ended' };
+        if (act.ManualOverride === 'OPEN') return { label: 'เปิดพิเศษ (Manual)', color: 'bg-green-500 text-white', key: 'active' };
+
         const now = new Date();
         const start = isDateValid(act.StartDateTime) ? new Date(act.StartDateTime!) : null;
         const end = isDateValid(act.EndDateTime) ? new Date(act.EndDateTime!) : null;
@@ -76,6 +84,59 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         onDataUpdate();
     };
 
+    // --- Bulk Import ---
+    const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsImporting(true);
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            const text = evt.target?.result as string;
+            const lines = text.split('\n').filter(l => l.trim());
+            // Skip Header
+            const promises = [];
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(',');
+                // CSV Format: Name, LocationID, Desc, StartTime, EndTime, Capacity
+                if (cols.length >= 2) {
+                    const newAct = {
+                        Name: cols[0].trim(),
+                        LocationID: cols[1].trim(),
+                        Description: cols[2]?.trim() || '',
+                        StartDateTime: cols[3]?.trim() || '',
+                        EndDateTime: cols[4]?.trim() || '',
+                        Capacity: parseInt(cols[5]?.trim()) || 0
+                    };
+                    promises.push(saveActivity(newAct));
+                }
+            }
+            await Promise.all(promises);
+            setIsImporting(false);
+            alert(`นำเข้าสำเร็จ ${promises.length} รายการ`);
+            onDataUpdate();
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        };
+        reader.readAsText(file);
+    };
+
+    // --- Toggle Status ---
+    const handleToggleStatus = async (act: CheckInActivity) => {
+        // Cycle: Auto (null/empty) -> OPEN -> CLOSED -> Auto
+        let nextStatus: 'OPEN' | 'CLOSED' | '' = '';
+        if (!act.ManualOverride) nextStatus = 'OPEN';
+        else if (act.ManualOverride === 'OPEN') nextStatus = 'CLOSED';
+        else nextStatus = '';
+
+        const confirmMsg = nextStatus === '' ? 'กลับสู่ระบบอัตโนมัติ (ตามเวลา)?' : nextStatus === 'OPEN' ? 'บังคับเปิดกิจกรรมเดี๋ยวนี้?' : 'บังคับปิดกิจกรรมเดี๋ยวนี้?';
+        if (!confirm(confirmMsg)) return;
+
+        // Optimistic Update
+        const updated = { ...act, ManualOverride: nextStatus };
+        // Ideally we should use a specific API, but saveActivity works
+        await saveActivity(updated);
+        onDataUpdate();
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex flex-col sm:flex-row gap-3">
@@ -89,25 +150,23 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                         onChange={(e) => setSearchActivityQuery(e.target.value)}
                     />
                 </div>
-                <div className="relative w-full sm:w-48">
-                    <Filter className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <select
-                        className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer"
-                        value={activityStatusFilter}
-                        onChange={(e) => setActivityStatusFilter(e.target.value as any)}
+                <div className="flex gap-2">
+                    <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-xl hover:bg-green-100 flex items-center justify-center font-bold text-sm"
+                        disabled={isImporting}
                     >
-                        <option value="all">ทุกสถานะ</option>
-                        <option value="active">กำลังดำเนินอยู่</option>
-                        <option value="upcoming">ยังไม่เริ่ม</option>
-                        <option value="ended">จบแล้ว</option>
-                    </select>
+                        {isImporting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Upload className="w-4 h-4 mr-1" />} Import CSV
+                    </button>
+                    <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleImportCSV} />
+                    
+                    <button 
+                        onClick={handleAdd}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center justify-center font-bold whitespace-nowrap"
+                    >
+                        <Plus className="w-5 h-5 mr-1" /> เพิ่ม
+                    </button>
                 </div>
-                <button 
-                    onClick={handleAdd}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center justify-center font-bold whitespace-nowrap"
-                >
-                    <Plus className="w-5 h-5 mr-1" /> เพิ่มกิจกรรม
-                </button>
             </div>
 
             {filteredActivities.map(act => {
@@ -142,10 +201,25 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                                 )}
                             </div>
                         </div>
-                        <div className="flex flex-col sm:items-end gap-1 border-t sm:border-0 pt-2 sm:pt-0 mt-2 sm:mt-0">
-                            <span className={`text-xs px-2 py-0.5 rounded font-bold self-start sm:self-end ${act.Capacity ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                                {act.Capacity ? `${act.CurrentCount || 0}/${act.Capacity}` : 'ไม่จำกัด'}
-                            </span>
+                        <div className="flex flex-col sm:items-end gap-2 border-t sm:border-0 pt-2 sm:pt-0 mt-2 sm:mt-0">
+                            <div className="flex items-center gap-2">
+                                {/* Toggle Button */}
+                                <button 
+                                    onClick={() => handleToggleStatus(act)}
+                                    className={`p-1.5 rounded-lg border flex items-center gap-1 text-xs font-bold transition-colors ${
+                                        act.ManualOverride === 'OPEN' ? 'bg-green-100 border-green-300 text-green-700' :
+                                        act.ManualOverride === 'CLOSED' ? 'bg-red-100 border-red-300 text-red-700' :
+                                        'bg-gray-100 border-gray-200 text-gray-500'
+                                    }`}
+                                    title="Emergency Toggle (Auto -> Open -> Closed)"
+                                >
+                                    <Power className="w-3 h-3" />
+                                    {act.ManualOverride || 'Auto'}
+                                </button>
+                                <span className={`text-xs px-2 py-0.5 rounded font-bold ${act.Capacity ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                                    {act.Capacity ? `${act.CurrentCount || 0}/${act.Capacity}` : 'ไม่จำกัด'}
+                                </span>
+                            </div>
                             <div className="flex gap-2 mt-1">
                                 <button 
                                     onClick={() => onViewLogs(act.Name)}
