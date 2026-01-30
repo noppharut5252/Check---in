@@ -4,7 +4,7 @@ import { AppData, CheckInActivity, CheckInLocation, CheckInUser } from '../types
 import { 
     MapPin, Camera, Navigation, AlertOctagon, CheckCircle, Loader2, Send, 
     MessageSquare, AlertTriangle, ArrowLeft, RefreshCw, FileCheck, Signal, 
-    SignalHigh, SignalLow, X, Zap, Check, Image
+    SignalHigh, SignalLow, X, Zap, Check, Image, RotateCcw
 } from 'lucide-react';
 import { performCheckIn, uploadCheckInImage, getUserCheckInHistory } from '../services/api';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -68,28 +68,50 @@ const CustomCamera: React.FC<{ onCapture: (base64: string) => void, onClose: () 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isStreaming, setIsStreaming] = useState(false);
     const [error, setError] = useState('');
+    const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
 
     useEffect(() => {
         let stream: MediaStream | null = null;
+        
         const startCamera = async () => {
+            // Stop existing tracks if any
+            if (videoRef.current && videoRef.current.srcObject) {
+                const oldStream = videoRef.current.srcObject as MediaStream;
+                oldStream.getTracks().forEach(t => t.stop());
+            }
+            setIsStreaming(false);
+
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
+                    video: { 
+                        facingMode: facingMode, 
+                        width: { ideal: 1280 }, 
+                        height: { ideal: 720 } 
+                    } 
                 });
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
-                    setIsStreaming(true);
+                    // Wait for video to be ready to play
+                    videoRef.current.onloadedmetadata = () => {
+                        setIsStreaming(true);
+                    };
                 }
             } catch (err) {
                 console.error("Camera Error", err);
                 setError('ไม่สามารถเข้าถึงกล้องได้ กรุณาตรวจสอบสิทธิ์');
             }
         };
+
         startCamera();
+
         return () => {
             if (stream) stream.getTracks().forEach(t => t.stop());
         };
-    }, []);
+    }, [facingMode]);
+
+    const toggleCamera = () => {
+        setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+    };
 
     const takePhoto = () => {
         if (videoRef.current && canvasRef.current) {
@@ -101,6 +123,12 @@ const CustomCamera: React.FC<{ onCapture: (base64: string) => void, onClose: () 
             
             const ctx = canvas.getContext('2d');
             if (ctx) {
+                // If using front camera, mirror the image horizontally
+                if (facingMode === 'user') {
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                }
+                
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 // Compress slightly
                 const base64 = canvas.toDataURL('image/jpeg', 0.8); 
@@ -119,25 +147,39 @@ const CustomCamera: React.FC<{ onCapture: (base64: string) => void, onClose: () 
             </div>
             
             {/* Viewport */}
-            <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+            <div className="flex-1 relative flex items-center justify-center overflow-hidden bg-black">
                 {error ? (
                     <div className="text-white text-center p-6">
                         <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-3" />
                         <p>{error}</p>
                     </div>
                 ) : (
-                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                    <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        playsInline 
+                        className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`} 
+                    />
                 )}
             </div>
 
             {/* Controls */}
-            <div className="h-32 bg-black flex items-center justify-center pb-safe relative z-20">
+            <div className="h-32 bg-black flex items-center justify-between px-10 pb-safe relative z-20">
+                <div className="w-12"></div> {/* Spacer */}
+                
                 <button 
                     onClick={takePhoto} 
                     disabled={!isStreaming}
                     className="w-20 h-20 bg-white rounded-full border-4 border-gray-300 shadow-lg active:scale-95 transition-transform flex items-center justify-center group"
                 >
                     <div className="w-16 h-16 bg-white rounded-full border-2 border-black/10 group-active:bg-gray-200"></div>
+                </button>
+
+                <button 
+                    onClick={toggleCamera}
+                    className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 active:rotate-180 transition-all duration-300"
+                >
+                    <RotateCcw className="w-6 h-6" />
                 </button>
                 <canvas ref={canvasRef} className="hidden" />
             </div>
