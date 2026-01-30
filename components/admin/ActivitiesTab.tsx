@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AppData, CheckInActivity } from '../../types';
-import { Search, Plus, Activity, MapPin, Clock, Edit2, Trash2, History, Upload, Loader2, Power, AlertTriangle, Share2, CheckCircle, X, Camera, Lock, Users, ShieldAlert, Tag, GraduationCap, LayoutGrid, List, Download, FileSpreadsheet, CheckSquare, Square, Filter, RefreshCw } from 'lucide-react';
+import { Search, Plus, Activity, MapPin, Clock, Edit2, Trash2, History, Upload, Loader2, Power, AlertTriangle, Share2, CheckCircle, X, Camera, Lock, Users, ShieldAlert, Tag, GraduationCap, LayoutGrid, List, Download, FileSpreadsheet, CheckSquare, Square, Filter, RefreshCw, AlertOctagon } from 'lucide-react';
 import { deleteActivity, saveActivity } from '../../services/api';
 import ActivityModal from './ActivityModal';
 import ConfirmationModal from '../ConfirmationModal';
@@ -77,7 +77,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     };
 
     const filteredActivities = useMemo(() => {
-        return data.checkInActivities.filter(act => {
+        return (data.checkInActivities || []).filter(act => {
             const matchesSearch = act.Name.toLowerCase().includes(searchActivityQuery.toLowerCase());
             const status = getActivityStatus(act);
             const matchesStatus = activityStatusFilter === 'all' || status.key === activityStatusFilter;
@@ -268,6 +268,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
 
     const handleStatusClick = (act: CheckInActivity) => {
         let nextStatus: 'OPEN' | 'CLOSED' | '' = '';
+        // Cycle logic: Auto (empty) -> OPEN -> CLOSED -> Auto
         if (!act.ManualOverride) nextStatus = 'OPEN';
         else if (act.ManualOverride === 'OPEN') nextStatus = 'CLOSED';
         else nextStatus = '';
@@ -283,7 +284,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     };
 
     const handleShare = async (act: CheckInActivity) => {
-        const location = data.checkInLocations.find(l => l.LocationID === act.LocationID);
+        const location = (data.checkInLocations || []).find(l => l.LocationID === act.LocationID);
         const locationName = location?.Name || 'ไม่ระบุสถานที่';
         const start = act.StartDateTime ? new Date(act.StartDateTime).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : 'ไม่ระบุเวลา';
         const image = getImageUrl(act.Image || '');
@@ -294,6 +295,42 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
             else setAlertMessage({ type: 'error', text: 'ไม่สามารถแชร์ได้' });
         } catch (e) {
             setAlertMessage({ type: 'error', text: 'เกิดข้อผิดพลาด' });
+        }
+    };
+
+    // Render logic for Status Modal Content
+    const getStatusModalContent = (nextStatus: string) => {
+        if (nextStatus === 'OPEN') {
+            return (
+                <div className="bg-green-50 p-4 rounded-xl border border-green-100 flex flex-col items-center mt-2">
+                    <CheckCircle className="w-10 h-10 text-green-500 mb-2" />
+                    <h4 className="font-bold text-green-800">เปิดระบบเช็คอิน (Force Open)</h4>
+                    <p className="text-xs text-green-600 mt-1 text-center">
+                        ระบบจะเปิดให้เช็คอินได้ทันทีโดยไม่สนใจเวลาเริ่มต้น-สิ้นสุด 
+                        ผู้ใช้งานจะสามารถกดเช็คอินได้ตลอดเวลาจนกว่าจะเปลี่ยนสถานะ
+                    </p>
+                </div>
+            );
+        } else if (nextStatus === 'CLOSED') {
+            return (
+                <div className="bg-red-50 p-4 rounded-xl border border-red-100 flex flex-col items-center mt-2">
+                    <AlertOctagon className="w-10 h-10 text-red-500 mb-2" />
+                    <h4 className="font-bold text-red-800">ปิดระบบเช็คอิน (Force Close)</h4>
+                    <p className="text-xs text-red-600 mt-1 text-center">
+                        ระบบจะปิดรับการเช็คอินทันที ผู้ใช้งานจะไม่สามารถเช็คอินได้แม้จะอยู่ในช่วงเวลาที่กำหนด
+                    </p>
+                </div>
+            );
+        } else {
+            return (
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col items-center mt-2">
+                    <RefreshCw className="w-10 h-10 text-blue-500 mb-2" />
+                    <h4 className="font-bold text-blue-800">โหมดอัตโนมัติ (Auto / Default)</h4>
+                    <p className="text-xs text-blue-600 mt-1 text-center">
+                        ระบบจะเปิด-ปิดตามเวลา Start/End DateTime และจำนวน Capacity ที่ตั้งไว้ในกิจกรรม
+                    </p>
+                </div>
+            );
         }
     };
 
@@ -431,7 +468,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                                     <div className="min-w-0 flex-1">
                                         <h3 className="font-bold text-gray-800 line-clamp-1 text-sm">{act.Name}</h3>
                                         <div className="text-xs text-gray-500 mt-1 space-y-1">
-                                            <div className="flex items-center gap-1"><MapPin className="w-3 h-3"/> <span className="truncate">{data.checkInLocations.find(l => l.LocationID === act.LocationID)?.Name || 'Unknown'}</span></div>
+                                            <div className="flex items-center gap-1"><MapPin className="w-3 h-3"/> <span className="truncate">{(data.checkInLocations || []).find(l => l.LocationID === act.LocationID)?.Name || 'Unknown'}</span></div>
                                             <div className="flex items-center gap-1"><Clock className="w-3 h-3"/> <span>{act.StartDateTime ? new Date(act.StartDateTime).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'}) : 'ไม่ระบุเวลา'}</span></div>
                                         </div>
                                     </div>
@@ -470,7 +507,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {filteredActivities.map(act => {
                                     const status = getActivityStatus(act);
-                                    const locName = data.checkInLocations.find(l => l.LocationID === act.LocationID)?.Name || '-';
+                                    const locName = (data.checkInLocations || []).find(l => l.LocationID === act.LocationID)?.Name || '-';
                                     const isSelected = selectedIds.has(act.ActivityID);
                                     const parseBool = (val: any) => val === true || String(val).toUpperCase() === 'TRUE';
 
@@ -522,7 +559,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                 isOpen={isModalOpen} 
                 onClose={() => setIsModalOpen(false)} 
                 initialData={editAct}
-                locations={data.checkInLocations} 
+                locations={data.checkInLocations || []} 
                 onSuccess={onDataUpdate}
             />
 
@@ -538,17 +575,19 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                 actionType="delete"
             />
 
-            {/* Status Change Modal */}
+            {/* Enhanced Status Change Modal */}
             <ConfirmationModal
                 isOpen={statusModal.isOpen}
-                title="เปลี่ยนสถานะกิจกรรม"
-                description={`คุณต้องการเปลี่ยนสถานะเป็น "${statusModal.nextStatus || 'AUTO'}" ใช่หรือไม่?`}
-                confirmLabel="ยืนยัน"
+                title="ยืนยันการเปลี่ยนสถานะ"
+                description="" // Handled by children
+                confirmLabel="ยืนยันการเปลี่ยนสถานะ"
                 confirmColor={statusModal.nextStatus === 'OPEN' ? 'green' : statusModal.nextStatus === 'CLOSED' ? 'red' : 'blue'}
                 onConfirm={handleConfirmStatus}
                 onCancel={() => setStatusModal({ ...statusModal, isOpen: false })}
                 actionType="updateStatus"
-            />
+            >
+                {getStatusModalContent(statusModal.nextStatus)}
+            </ConfirmationModal>
         </div>
     );
 };
