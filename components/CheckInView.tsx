@@ -4,7 +4,7 @@ import { AppData, CheckInActivity, CheckInLocation, CheckInUser } from '../types
 import { 
     MapPin, Camera, Navigation, AlertOctagon, CheckCircle, Loader2, Send, 
     MessageSquare, AlertTriangle, ArrowLeft, RefreshCw, FileCheck, Signal, 
-    SignalHigh, SignalLow, X, Zap 
+    SignalHigh, SignalLow, X, Zap, Check 
 } from 'lucide-react';
 import { performCheckIn, uploadCheckInImage, getUserCheckInHistory } from '../services/api';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -145,6 +145,39 @@ const CustomCamera: React.FC<{ onCapture: (base64: string) => void, onClose: () 
     );
 };
 
+// --- Notification Modal ---
+const NotificationModal: React.FC<{ 
+    isOpen: boolean, 
+    type: 'success' | 'error' | 'loading', 
+    title: string, 
+    message: string, 
+    onClose?: () => void 
+}> = ({ isOpen, type, title, message, onClose }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[400] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300">
+            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${type === 'success' ? 'bg-green-100 text-green-600' : type === 'error' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                    {type === 'success' && <Check className="w-8 h-8" />}
+                    {type === 'error' && <AlertTriangle className="w-8 h-8" />}
+                    {type === 'loading' && <Loader2 className="w-8 h-8 animate-spin" />}
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">{title}</h3>
+                <p className="text-gray-500 text-sm mb-6">{message}</p>
+                {type !== 'loading' && (
+                    <button 
+                        onClick={onClose}
+                        className={`w-full py-3 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 ${type === 'success' ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}
+                    >
+                        {type === 'success' ? 'ตกลง' : 'ปิด'}
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propActivityId }) => {
     const navigate = useNavigate();
     const params = useParams<{ activityId: string }>();
@@ -159,7 +192,9 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const [comment, setComment] = useState('');
     const [checkedInDetail, setCheckedInDetail] = useState<any>(null);
     const [isCameraOpen, setIsCameraOpen] = useState(false);
-    const [debugMsg, setDebugMsg] = useState('');
+    
+    // Notification State
+    const [notification, setNotification] = useState<{ isOpen: boolean, type: 'success' | 'error' | 'loading', title: string, message: string }>({ isOpen: false, type: 'loading', title: '', message: '' });
 
     // Refs
     const posHistory = useRef<{lat: number, lng: number}[]>([]);
@@ -241,7 +276,6 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
             },
             (err) => {
                 console.error("GPS Error", err);
-                setDebugMsg('GPS Error: ' + err.message);
                 setStatus('blocked');
             },
             { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
@@ -309,12 +343,23 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         
         // GPS Accuracy Check
         if (gpsStatus.accuracy > 100) {
-            alert(`สัญญาณ GPS ไม่เสถียร (ความคลาดเคลื่อน ${gpsStatus.accuracy} เมตร) กรุณาหาสัญญาณที่ดีกว่านี้`);
+            setNotification({
+                isOpen: true,
+                type: 'error',
+                title: 'สัญญาณ GPS ไม่เสถียร',
+                message: `ความคลาดเคลื่อน ${gpsStatus.accuracy} เมตร กรุณายืนในที่โล่งแจ้งแล้วลองใหม่`
+            });
             return;
         }
 
         const uid = user.UserID || user.userid;
         setStatus('submitting');
+        setNotification({
+            isOpen: true,
+            type: 'loading',
+            title: 'กำลังบันทึกข้อมูล',
+            message: 'กรุณารอสักครู่ ระบบกำลังส่งข้อมูลการเช็คอิน...'
+        });
         
         let photoUrl = '';
         if (photo) {
@@ -334,9 +379,15 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
 
         if (res.status === 'success') {
             setStatus('success');
+            setNotification({ isOpen: false, type: 'success', title: '', message: '' }); // Close loading modal
         } else {
-            alert('บันทึกไม่สำเร็จ: ' + res.message);
             setStatus('ready');
+            setNotification({
+                isOpen: true,
+                type: 'error',
+                title: 'บันทึกไม่สำเร็จ',
+                message: res.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ'
+            });
         }
     };
 
@@ -346,15 +397,17 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
 
     if (status === 'success') {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-green-50 p-6 text-center font-kanit">
-                <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-green-100 animate-in zoom-in">
+            <div className="flex flex-col items-center justify-center min-h-screen bg-green-50 p-6 text-center font-kanit animate-in fade-in">
+                <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-green-100 animate-in zoom-in w-full max-w-sm">
                     <CheckCircle className="w-24 h-24 text-green-500 mx-auto mb-4" />
                     <h2 className="text-2xl font-bold text-gray-800">เช็คอินสำเร็จ!</h2>
                     <p className="text-gray-500 mt-2">ขอบคุณที่เข้าร่วมกิจกรรม<br/>"{activity.Name}"</p>
-                    <div className="mt-6 p-4 bg-green-50 rounded-xl text-green-800 text-sm font-mono">
+                    <div className="mt-6 p-4 bg-green-50 rounded-xl text-green-800 text-sm font-mono border border-green-200">
                         {new Date().toLocaleString('th-TH')}
                     </div>
-                    <button onClick={() => navigate(-1)} className="mt-8 px-6 py-2 bg-green-600 text-white rounded-xl font-bold shadow-lg shadow-green-200">เสร็จสิ้น</button>
+                    <button onClick={() => navigate(-1)} className="mt-8 w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-200 transition-transform active:scale-95">
+                        เสร็จสิ้น
+                    </button>
                 </div>
             </div>
         );
@@ -370,12 +423,12 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                     <h2 className="text-xl font-bold text-gray-800">ลงทะเบียนแล้ว</h2>
                     <p className="text-gray-500 text-sm mt-1 mb-6">คุณได้ทำการเช็คอินกิจกรรมนี้ไปแล้ว</p>
                     
-                    <div className="bg-gray-50 rounded-xl p-4 text-left text-sm space-y-2 mb-6">
+                    <div className="bg-gray-50 rounded-xl p-4 text-left text-sm space-y-2 mb-6 border border-gray-200">
                         <div className="flex justify-between"><span className="text-gray-500">กิจกรรม</span><span className="font-bold">{activity.Name}</span></div>
                         <div className="flex justify-between"><span className="text-gray-500">เวลา</span><span>{new Date(checkedInDetail.Timestamp).toLocaleString('th-TH')}</span></div>
                     </div>
                     
-                    <button onClick={() => navigate(-1)} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-bold">ย้อนกลับ</button>
+                    <button onClick={() => navigate(-1)} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">ย้อนกลับ</button>
                 </div>
             </div>
         );
@@ -405,6 +458,14 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                     100% {-webkit-transform: scale(1.2, 1.2); opacity: 0.0;}
                 }
             `}</style>
+
+            <NotificationModal 
+                isOpen={notification.isOpen} 
+                type={notification.type} 
+                title={notification.title} 
+                message={notification.message}
+                onClose={() => setNotification({ ...notification, isOpen: false })}
+            />
 
             {isCameraOpen && <CustomCamera onCapture={(img) => { setPhoto(img); setIsCameraOpen(false); }} onClose={() => setIsCameraOpen(false)} />}
 
