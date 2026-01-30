@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { AppData, CheckInActivity } from '../../types';
-import { Search, Plus, Activity, MapPin, Clock, Edit2, Trash2, History, Upload, Loader2, Power, AlertTriangle, Share2, CheckCircle, X } from 'lucide-react';
+import { Search, Plus, Activity, MapPin, Clock, Edit2, Trash2, History, Upload, Loader2, Power, AlertTriangle, Share2, CheckCircle, X, Camera, Lock, Users, ShieldAlert } from 'lucide-react';
 import { deleteActivity, saveActivity } from '../../services/api';
 import ActivityModal from './ActivityModal';
 import ConfirmationModal from '../ConfirmationModal';
@@ -141,13 +141,24 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     };
 
     const handleShare = async (act: CheckInActivity) => {
-        const locationName = data.checkInLocations.find(l => l.LocationID === act.LocationID)?.Name || 'ไม่ระบุสถานที่';
+        const location = data.checkInLocations.find(l => l.LocationID === act.LocationID);
+        const locationName = location?.Name || 'ไม่ระบุสถานที่';
         // Use Thai Date Format for display
         const start = act.StartDateTime ? new Date(act.StartDateTime).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : 'ไม่ระบุเวลา';
         const image = getImageUrl(act.Image || '');
         
         try {
-            const res = await shareCheckInActivity(act.Name, locationName, start, act.ActivityID, image);
+            // Pass floor and room if available
+            const res = await shareCheckInActivity(
+                act.Name, 
+                locationName, 
+                start, 
+                act.ActivityID, 
+                image, 
+                location?.Floor, 
+                location?.Room
+            );
+            
             if (res.success) {
                 if (res.method === 'line') setAlertMessage({ type: 'success', text: 'แชร์ไปยัง LINE แล้ว' });
                 else if (res.method === 'copy') setAlertMessage({ type: 'success', text: 'คัดลอกลิงก์แล้ว' });
@@ -204,6 +215,10 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
 
             {filteredActivities.map(act => {
                 const status = getActivityStatus(act);
+                const reqPhoto = String(act.RequirePhoto).toUpperCase() === 'TRUE';
+                const isLocked = String(act.IsLocked).toUpperCase() === 'TRUE';
+                const isAreaLocked = String(act.IsAreaLocked).toUpperCase() === 'TRUE';
+
                 return (
                     <div key={act.ActivityID} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 group hover:border-blue-200 transition-colors">
                         <div className="flex items-center gap-3">
@@ -215,24 +230,30 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                                 )}
                             </div>
                             <div>
-                                <div className="flex items-center gap-2 mb-1">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
                                     <h3 className="font-bold text-gray-800 line-clamp-1">{act.Name}</h3>
                                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${status.color}`}>
                                         {status.label}
                                     </span>
                                 </div>
-                                <p className="text-xs text-gray-500 flex items-center gap-2">
-                                    <MapPin className="w-3 h-3"/> 
-                                    {data.checkInLocations.find(l => l.LocationID === act.LocationID)?.Name || 'Unknown Loc'}
-                                </p>
-                                <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-2">
+                                <div className="flex flex-wrap gap-2 text-xs text-gray-500 mb-1">
+                                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3"/> {data.checkInLocations.find(l => l.LocationID === act.LocationID)?.Name || 'Unknown'}</span>
+                                    {(act.ReqTeachers || act.ReqStudents) && (
+                                        <span className="flex items-center gap-1 bg-gray-50 px-1.5 rounded"><Users className="w-3 h-3 text-blue-500"/> {act.ReqTeachers || 0}C / {act.ReqStudents || 0}S</span>
+                                    )}
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-2 flex-wrap">
+                                    {/* Flags Badges */}
+                                    {reqPhoto && <span className="flex items-center text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100"><Camera className="w-3 h-3 mr-1"/> Req. Photo</span>}
+                                    {isLocked && <span className="flex items-center text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100"><Lock className="w-3 h-3 mr-1"/> Cluster Lock</span>}
+                                    {isAreaLocked && <span className="flex items-center text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100"><ShieldAlert className="w-3 h-3 mr-1"/> Area Lock</span>}
+                                    
                                     {(act.StartDateTime || act.EndDateTime) && (
                                         <span className="flex items-center">
                                             <Clock className="w-3 h-3 mr-1"/>
                                             {act.StartDateTime ? new Date(act.StartDateTime).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : 'Any'}
                                         </span>
                                     )}
-                                    {act.Category && <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{act.Category}</span>}
                                 </div>
                             </div>
                         </div>
@@ -249,7 +270,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                                     title="เปลี่ยนสถานะ (Manual Override)"
                                 >
                                     <Power className="w-3 h-3" />
-                                    {act.ManualOverride === 'OPEN' ? 'FORCE OPEN' : act.ManualOverride === 'CLOSED' ? 'FORCE CLOSED' : 'AUTO MODE'}
+                                    {act.ManualOverride === 'OPEN' ? 'FORCE OPEN' : act.ManualOverride === 'CLOSED' ? 'FORCE CLOSED' : 'AUTO'}
                                 </button>
                                 <span className={`text-xs px-2 py-1 rounded font-bold ${act.Capacity ? 'bg-orange-100 text-orange-700' : 'bg-blue-50 text-blue-700'}`}>
                                     {act.Capacity ? `${act.CurrentCount || 0}/${act.Capacity}` : 'ไม่จำกัด'}
