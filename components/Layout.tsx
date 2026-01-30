@@ -124,10 +124,14 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
         <aside className={`hidden md:flex bg-white border-r border-gray-200 flex-col shrink-0 transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
             <div className={`h-16 flex items-center px-4 border-b border-gray-100 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
                 <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : ''}`}>
-                    <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-md shrink-0">
-                        <Trophy className="w-5 h-5" />
+                    <div className="bg-blue-50 p-1.5 rounded-lg shrink-0 border border-blue-100">
+                        <img 
+                            src="https://raw.githubusercontent.com/noppharut5252/Checkin/refs/heads/main/logo/logo.png" 
+                            className="w-6 h-6 object-contain"
+                            alt="Logo"
+                        />
                     </div>
-                    {!isCollapsed && <span className="font-bold text-gray-800 text-lg tracking-tight ml-3 truncate">CompManager</span>}
+                    {!isCollapsed && <span className="font-bold text-gray-800 text-lg tracking-tight ml-3 truncate">UprightSchool</span>}
                 </div>
                 {!isCollapsed && (
                     <button onClick={() => setIsCollapsed(true)} className="text-gray-400 hover:text-gray-600">
@@ -253,10 +257,12 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
             {/* Mobile Header */}
             <header className="md:hidden h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 sticky top-0 z-30 shadow-sm shrink-0">
                 <div className="flex items-center gap-2">
-                    <div className="bg-blue-600 text-white p-1 rounded-lg">
-                        <Trophy className="w-4 h-4" />
-                    </div>
-                    <span className="font-bold text-gray-800">CompManager</span>
+                    <img 
+                        src="https://raw.githubusercontent.com/noppharut5252/Checkin/refs/heads/main/logo/logo.png" 
+                        className="w-7 h-7 object-contain"
+                        alt="Logo"
+                    />
+                    <span className="font-bold text-gray-800">UprightSchool</span>
                 </div>
                 {isLoggedIn && (
                     <div className="flex items-center gap-3">
