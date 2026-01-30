@@ -15,9 +15,9 @@ export default defineConfig({
       // กำหนด scope ของ PWA ให้จำกัดอยู่ในโฟลเดอร์นี้
       scope: '/Checkin/',
       manifest: {
-        name: 'Checkin System',
-        short_name: 'Checkin',
-        description: 'ระบบจัดการการเช็คอินและแข่งขัน',
+        name: 'UprightSchool Check-in',
+        short_name: 'UprightSchool',
+        description: 'ระบบเช็คอินงานโรงเรียนสุจริต ระดับประเทศ',
         theme_color: '#2563eb',
         background_color: '#f3f4f6',
         display: 'standalone',
@@ -27,12 +27,12 @@ export default defineConfig({
         scope: '/Checkin/',
         icons: [
           {
-            src: 'https://cdn-icons-png.flaticon.com/512/3135/3135768.png',
+            src: 'https://raw.githubusercontent.com/noppharut5252/Checkin/refs/heads/main/logo/logo.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'https://cdn-icons-png.flaticon.com/512/3135/3135768.png',
+            src: 'https://raw.githubusercontent.com/noppharut5252/Checkin/refs/heads/main/logo/logo.png',
             sizes: '512x512',
             type: 'image/png'
           }
