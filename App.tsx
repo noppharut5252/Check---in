@@ -43,6 +43,9 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
+  
+  // Store the intended destination if user needs to register first
+  const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
 
   const loadData = async () => {
       setLoading(true);
@@ -67,6 +70,14 @@ const App: React.FC = () => {
           if (savedUser) {
               setUser(JSON.parse(savedUser));
               return;
+          }
+
+          // Capture current hash path before LIFF init/redirect logic
+          // This handles cases where user clicks a Flex Message link like .../#/checkin/ACT-001
+          const currentHash = window.location.hash;
+          if (currentHash && currentHash !== '#/' && currentHash !== '#/home') {
+              // Store path without the '#'
+              setPendingRedirect(currentHash.substring(1));
           }
 
           // Try LIFF Init
@@ -107,14 +118,27 @@ const App: React.FC = () => {
       setUser(u);
       setIsRegistering(false);
       localStorage.setItem('comp_user', JSON.stringify(u));
+      
+      // If there was a pending redirect (e.g. from Deep Link), clear it here 
+      // but the Router will handle the navigation if we don't interfere.
+      // However, for the flow: Click Link -> Login Process -> App Mounts -> Router sees URL
+      // The router should handle it automatically if we are just logging in.
+      // But if we went to Register mode, we need to handle redirect manually after update.
   };
 
   const handleUpdateUser = (updatedUser: User) => {
       setUser(updatedUser);
       localStorage.setItem('comp_user', JSON.stringify(updatedUser));
+      
       // If we were registering, this completes it
       if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
           setIsRegistering(false);
+          
+          // Redirect to the originally intended page if it exists
+          if (pendingRedirect) {
+              window.location.hash = pendingRedirect;
+              setPendingRedirect(null);
+          }
       }
   };
 
@@ -156,7 +180,11 @@ const App: React.FC = () => {
 
             {/* Force profile for registration */}
             {isRegistering && (
-                <Route path="*" element={<Navigate to="/profile" replace />} />
+                <Route path="*" element={
+                    <Layout userProfile={user} data={data}>
+                        <ProfileView user={user!} data={data} onUpdateUser={handleUpdateUser} isRegistrationMode={true} />
+                    </Layout>
+                } />
             )}
 
             <Route path="/home" element={
@@ -230,6 +258,8 @@ const App: React.FC = () => {
             <Route path="/summary" element={<Layout userProfile={user} data={data}><SummaryGenerator data={data} user={user} /></Layout>} />
 
             <Route path="/login" element={<LoginScreen onLoginSuccess={handleLogin} />} />
+            
+            {/* Catch all - redirect based on auth */}
             <Route path="*" element={<Navigate to={isRegistering ? "/profile" : "/home"} replace />} />
         </Routes>
     </HashRouter>
