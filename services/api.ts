@@ -115,6 +115,7 @@ export const deleteLocation = async (id: string) => {
 };
 
 export const saveActivity = async (activity: Partial<CheckInActivity>) => {
+    // Send all fields required by backend mapping
     return await apiRequest('saveActivity', {
         id: activity.ActivityID,
         locationId: activity.LocationID,
@@ -125,7 +126,16 @@ export const saveActivity = async (activity: Partial<CheckInActivity>) => {
         endDateTime: activity.EndDateTime,
         capacity: activity.Capacity,
         image: activity.Image,
-        manualOverride: activity.ManualOverride // Pass override status
+        manualOverride: activity.ManualOverride,
+        // New Fields (Mapped to camelCase for backend consumption)
+        category: activity.Category,
+        mode: activity.Mode,
+        levels: activity.Levels,
+        reqStudents: activity.ReqStudents,
+        reqTeachers: activity.ReqTeachers,
+        requirePhoto: activity.RequirePhoto,
+        isLocked: activity.IsLocked,
+        isAreaLocked: activity.IsAreaLocked
     });
 };
 
