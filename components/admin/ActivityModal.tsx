@@ -31,11 +31,22 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
 
     useEffect(() => {
         if (isOpen) {
-            // Correctly initialize boolean fields that might come as 'TRUE'/'FALSE' strings or booleans
-            const parseBool = (val: any) => val === true || String(val).toUpperCase() === 'TRUE';
-            
+            // Helper to handle diverse boolean formats from Google Sheets (Boolean, String 'TRUE', 1, etc.)
+            const parseBool = (val: any) => {
+                if (typeof val === 'boolean') return val;
+                if (typeof val === 'string') return val.toUpperCase() === 'TRUE';
+                return !!val;
+            };
+
             setEditAct({
                 ...initialData,
+                // Ensure empty strings instead of undefined for inputs
+                Category: initialData.Category || '',
+                Mode: initialData.Mode || '',
+                Levels: initialData.Levels || '',
+                ReqStudents: initialData.ReqStudents || 0,
+                ReqTeachers: initialData.ReqTeachers || 0,
+                // Boolean Flags
                 RequirePhoto: parseBool(initialData.RequirePhoto),
                 IsLocked: parseBool(initialData.IsLocked),
                 IsAreaLocked: parseBool(initialData.IsAreaLocked)
@@ -175,7 +186,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
                                     type="number" 
                                     className="w-full border border-gray-300 rounded-lg p-2 text-sm" 
                                     placeholder="0"
-                                    value={editAct.ReqStudents || ''}
+                                    value={editAct.ReqStudents}
                                     onChange={e => setEditAct({...editAct, ReqStudents: parseInt(e.target.value) || 0})}
                                 />
                             </div>
@@ -185,7 +196,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
                                     type="number" 
                                     className="w-full border border-gray-300 rounded-lg p-2 text-sm" 
                                     placeholder="0"
-                                    value={editAct.ReqTeachers || ''}
+                                    value={editAct.ReqTeachers}
                                     onChange={e => setEditAct({...editAct, ReqTeachers: parseInt(e.target.value) || 0})}
                                 />
                             </div>
