@@ -45,6 +45,11 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     // Notifications State
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; id: string; title: string }>({ isOpen: false, id: '', title: '' });
     const [statusModal, setStatusModal] = useState<{ isOpen: boolean; act: CheckInActivity | null; nextStatus: 'OPEN' | 'CLOSED' | '' }>({ isOpen: false, act: null, nextStatus: '' });
+    
+    // Bulk Action Modals State
+    const [bulkStatusModal, setBulkStatusModal] = useState<{ isOpen: boolean; status: 'OPEN' | 'CLOSED' | '' }>({ isOpen: false, status: '' });
+    const [bulkDeleteModal, setBulkDeleteModal] = useState(false);
+
     const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     
     const [isDeleting, setIsDeleting] = useState(false);
@@ -57,6 +62,14 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     useEffect(() => {
         setSelectedIds(new Set());
     }, [searchActivityQuery, activityStatusFilter, categoryFilter, levelFilter]);
+
+    // Auto-dismiss alert
+    useEffect(() => {
+        if (alertMessage) {
+            const timer = setTimeout(() => setAlertMessage(null), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [alertMessage]);
 
     const isDateValid = (d: any) => d && !isNaN(new Date(d).getTime());
 
@@ -115,11 +128,16 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         setSelectedIds(newSet);
     };
 
-    const handleBulkStatusChange = async (overrideStatus: 'OPEN' | 'CLOSED' | '') => {
-        if (!confirm(`ยืนยันการเปลี่ยนสถานะ ${selectedIds.size} รายการ?`)) return;
+    const handleBulkStatusChange = (overrideStatus: 'OPEN' | 'CLOSED' | '') => {
+        if (selectedIds.size === 0) return;
+        // Just open the modal, the logic is in confirmBulkStatusChange
+        setBulkStatusModal({ isOpen: true, status: overrideStatus });
+    };
+
+    const confirmBulkStatusChange = async () => {
+        const overrideStatus = bulkStatusModal.status;
         setIsProcessingBulk(true);
         try {
-            // Process in parallel chunks to be faster, but strictly this should be a backend batch endpoint
             const promises = Array.from(selectedIds).map(id => {
                 const act = data.checkInActivities.find(a => a.ActivityID === id);
                 if (act) return saveActivity({ ...act, ManualOverride: overrideStatus });
@@ -133,11 +151,17 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
             setAlertMessage({ type: 'error', text: 'เกิดข้อผิดพลาด' });
         } finally {
             setIsProcessingBulk(false);
+            setBulkStatusModal({ isOpen: false, status: '' });
         }
     };
 
-    const handleBulkDelete = async () => {
-        if (!confirm(`คำเตือน! คุณกำลังจะลบ ${selectedIds.size} กิจกรรม\nการกระทำนี้ไม่สามารถย้อนกลับได้ ยืนยันหรือไม่?`)) return;
+    const handleBulkDelete = () => {
+        if (selectedIds.size === 0) return;
+        // Just open the modal
+        setBulkDeleteModal(true);
+    };
+
+    const confirmBulkDelete = async () => {
         setIsProcessingBulk(true);
         try {
             const promises = Array.from(selectedIds).map(id => deleteActivity(id));
@@ -149,6 +173,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
             setAlertMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการลบ' });
         } finally {
             setIsProcessingBulk(false);
+            setBulkDeleteModal(false);
         }
     };
 
@@ -264,6 +289,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         setIsDeleting(false);
         setDeleteModal(prev => ({ ...prev, isOpen: false }));
         onDataUpdate();
+        setAlertMessage({ type: 'success', text: 'ลบกิจกรรมสำเร็จ' });
     };
 
     const handleStatusClick = (act: CheckInActivity) => {
@@ -281,6 +307,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         await saveActivity(updated);
         setStatusModal({ ...statusModal, isOpen: false });
         onDataUpdate();
+        setAlertMessage({ type: 'success', text: 'อัปเดตสถานะสำเร็จ' });
     };
 
     const handleShare = async (act: CheckInActivity) => {
@@ -575,11 +602,38 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                 actionType="delete"
             />
 
-            {/* Enhanced Status Change Modal */}
+            {/* Bulk Status Change Modal */}
+            <ConfirmationModal
+                isOpen={bulkStatusModal.isOpen}
+                title={`เปลี่ยนสถานะ ${selectedIds.size} รายการ`}
+                description="" // Handled by children
+                confirmLabel="ยืนยันการเปลี่ยนสถานะกลุ่ม"
+                confirmColor={bulkStatusModal.status === 'OPEN' ? 'green' : bulkStatusModal.status === 'CLOSED' ? 'red' : 'blue'}
+                onConfirm={confirmBulkStatusChange}
+                onCancel={() => setBulkStatusModal({ isOpen: false, status: '' })}
+                isLoading={isProcessingBulk}
+            >
+                {getStatusModalContent(bulkStatusModal.status)}
+            </ConfirmationModal>
+
+            {/* Bulk Delete Modal */}
+            <ConfirmationModal
+                isOpen={bulkDeleteModal}
+                title={`ยืนยันการลบ ${selectedIds.size} รายการ`}
+                description="คุณต้องการลบกิจกรรมที่เลือกทั้งหมดใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"
+                confirmLabel="ยืนยันลบทั้งหมด"
+                confirmColor="red"
+                onConfirm={confirmBulkDelete}
+                onCancel={() => setBulkDeleteModal(false)}
+                isLoading={isProcessingBulk}
+                actionType="delete"
+            />
+
+            {/* Single Status Change Modal */}
             <ConfirmationModal
                 isOpen={statusModal.isOpen}
                 title="ยืนยันการเปลี่ยนสถานะ"
-                description="" // Handled by children
+                description="" 
                 confirmLabel="ยืนยันการเปลี่ยนสถานะ"
                 confirmColor={statusModal.nextStatus === 'OPEN' ? 'green' : statusModal.nextStatus === 'CLOSED' ? 'red' : 'blue'}
                 onConfirm={handleConfirmStatus}
