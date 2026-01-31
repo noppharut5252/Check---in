@@ -20,7 +20,11 @@ interface PrintConfig {
         name: number; 
         note: number; 
     };
+    qrType?: 'checkin' | 'registration'; // Added qrType
 }
+
+// LIFF URL for Registration
+const LIFF_URL = "https://liff.line.me/2006369866-W1AicZ72";
 
 export const generatePosterHTML = async (
     activitiesToPrint: CheckInActivity[], 
@@ -33,7 +37,8 @@ export const generatePosterHTML = async (
         note = '',
         margins = { top: 0, bottom: 0, left: 0, right: 0 },
         fonts = { header: 'Kanit', subheader: 'Kanit', name: 'Kanit', note: 'Kanit' },
-        fontSizes = { header: 42, subheader: 18, name: 32, note: 18 }
+        fontSizes = { header: 42, subheader: 18, name: 32, note: 18 },
+        qrType = 'checkin'
     } = config;
 
     // Theme Colors
@@ -47,10 +52,31 @@ export const generatePosterHTML = async (
     const t = colors[theme] || colors.blue;
 
     const qrCodePromises = activitiesToPrint.map(async (act) => {
-        const checkInUrl = `${window.location.origin}${window.location.pathname}#/checkin/${act.ActivityID}`;
-        const qr = await QRCode.toDataURL(checkInUrl, { width: 600, margin: 1 });
-        const loc = locations.find(l => l.LocationID === act.LocationID);
-        return { act, loc, qr };
+        let url = '';
+        let headerTitle = '';
+        let headerSub = '';
+        let mainName = '';
+        let badgeText = '';
+        
+        if (qrType === 'registration') {
+            // Registration Mode: Link to LIFF
+            url = LIFF_URL;
+            headerTitle = "REGISTRATION";
+            headerSub = "ลงทะเบียน / เข้าสู่ระบบ";
+            mainName = "UprightSchool Check-in";
+            badgeText = "📱 สแกนด้วย LINE";
+        } else {
+            // Activity Check-in Mode
+            url = `${window.location.origin}${window.location.pathname}#/checkin/${act.ActivityID}`;
+            headerTitle = "Check-In Point";
+            headerSub = "จุดลงทะเบียนเข้าร่วมกิจกรรม";
+            mainName = act.Name;
+            const loc = locations.find(l => l.LocationID === act.LocationID);
+            badgeText = `📍 ${loc?.Name || 'Location'}`;
+        }
+
+        const qr = await QRCode.toDataURL(url, { width: 600, margin: 1 });
+        return { act, qr, headerTitle, headerSub, mainName, badgeText };
     });
     
     const items = await Promise.all(qrCodePromises);
@@ -176,14 +202,10 @@ export const generatePosterHTML = async (
         .no-print { position: fixed; top: 10px; right: 10px; z-index: 9999; }
     `;
 
-    // Layout Specific CSS - Applying Font Sizes relative to Base Config or Absolute if 1:1
-    // Logic: We treat the inputs as "Base Size" (for Poster), then scale down for smaller layouts.
-    
     let layoutCSS = '';
     let pagesHTML = '';
 
     if (layout === 'poster') {
-        // 1 per Page (A4) - Base Sizes
         layoutCSS = `
             .page-content-wrapper { display: flex; }
             .card { width: 100%; height: 100%; border: none; }
@@ -202,22 +224,21 @@ export const generatePosterHTML = async (
             <div class="page">
                 <div class="page-content-wrapper">
                     <div class="card">
-                        <div class="header"><h1>Check-In Point</h1><p>จุดลงทะเบียนเข้าร่วมกิจกรรม</p></div>
+                        <div class="header"><h1>${item.headerTitle}</h1><p>${item.headerSub}</p></div>
                         <div class="content">
-                            <div class="act-name">${item.act.Name}</div>
+                            <div class="act-name">${item.mainName}</div>
                             <div class="qr-box"><img src="${item.qr}" class="qr-img" /></div>
                             <div class="scan-text">SCAN ME</div>
-                            <div class="badge">📍 ${item.loc?.Name || 'Location'}</div>
+                            <div class="badge">${item.badgeText}</div>
                             ${note ? `<div class="note">${note}</div>` : ''}
                         </div>
-                        <div class="footer">UprightSchool Check-in System • ID: ${item.act.ActivityID}</div>
+                        <div class="footer">UprightSchool System • ${item.act.ActivityID || 'REG'}</div>
                     </div>
                 </div>
             </div>
         `).join('');
 
     } else if (layout === 'half') {
-        // 2 per Page (A5) - Scaled ~60-70%
         layoutCSS = `
             .page-content-wrapper { display: grid; grid-template-rows: 1fr 1fr; gap: 5mm; }
             .card { border: 1px dashed #ccc; border-radius: 8px; }
@@ -237,15 +258,15 @@ export const generatePosterHTML = async (
             chunk.forEach(item => {
                 pagesHTML += `
                     <div class="card">
-                        <div class="header"><h1>Check-In Point</h1><p>จุดลงทะเบียน</p></div>
+                        <div class="header"><h1>${item.headerTitle}</h1><p>${item.headerSub}</p></div>
                         <div class="content">
-                            <div class="act-name">${item.act.Name}</div>
+                            <div class="act-name">${item.mainName}</div>
                             <div class="qr-box"><img src="${item.qr}" class="qr-img" /></div>
                             <div class="scan-text">SCAN ME</div>
-                            <div class="badge">📍 ${item.loc?.Name || 'Location'}</div>
+                            <div class="badge">${item.badgeText}</div>
                             ${note ? `<div class="note">${note}</div>` : ''}
                         </div>
-                        <div class="footer">ID: ${item.act.ActivityID}</div>
+                        <div class="footer">ID: ${item.act.ActivityID || 'REG'}</div>
                     </div>
                 `;
             });
@@ -253,7 +274,6 @@ export const generatePosterHTML = async (
         }
 
     } else if (layout === 'card') {
-        // 4 per Page (A6) - Scaled ~50%
         layoutCSS = `
             .page-content-wrapper { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 5mm; }
             .card { border-radius: 15px; border: 1px solid #ddd; box-shadow: none; }
@@ -275,11 +295,11 @@ export const generatePosterHTML = async (
             chunk.forEach(item => {
                 pagesHTML += `
                     <div class="card">
-                        <div class="header"><h1>CHECK-IN</h1></div>
+                        <div class="header"><h1>${item.headerTitle}</h1></div>
                         <div class="content">
-                            <div class="act-name">${item.act.Name}</div>
+                            <div class="act-name">${item.mainName}</div>
                             <div class="qr-box"><img src="${item.qr}" class="qr-img" /></div>
-                            <div class="badge">📍 ${item.loc?.Name || 'Location'}</div>
+                            <div class="badge">${item.badgeText}</div>
                             ${note ? `<div class="note">${note}</div>` : ''}
                         </div>
                     </div>
