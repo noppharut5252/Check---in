@@ -222,8 +222,8 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
 
     const handleDownloadTemplate = () => {
         const headers = ['Name', 'LocationID', 'Description', 'StartDateTime', 'EndDateTime', 'Capacity', 'Category', 'Levels', 'Mode', 'ReqStudents', 'ReqTeachers', 'RequirePhoto', 'IsLocked'];
-        const sample1 = ['"การแข่งขันหุ่นยนต์"', 'LOC-001', '"รายละเอียดกิจกรรม"', '2024-12-25 09:00', '2024-12-25 12:00', '0', 'หุ่นยนต์', 'ม.1-3', 'Team', '3', '1', 'FALSE', 'FALSE'];
-        const sample2 = ['"การประกวดโครงงาน"', 'LOC-002', '"จัดที่ห้องประชุม"', '2024-12-25 13:00', '2024-12-25 16:00', '20', 'วิทยาศาสตร์', 'ป.4-6', 'Team', '3', '1', 'TRUE', 'FALSE'];
+        const sample1 = ['"การแข่งขันหุ่นยนต์"', 'LOC-001', '"รายละเอียดกิจกรรม\nสามารถขึ้นบรรทัดใหม่ได้"', '2026-01-31T09:00:00+07:00', '2026-01-31T12:00:00+07:00', '0', 'หุ่นยนต์', 'ม.1-3', 'Team', '3', '1', 'FALSE', 'FALSE'];
+        const sample2 = ['"การประกวดโครงงาน"', 'LOC-002', '"จัดที่ห้องประชุม"', '2026-01-31T13:00:00+07:00', '2026-01-31T16:00:00+07:00', '20', 'วิทยาศาสตร์', 'ป.4-6', 'Team', '3', '1', 'TRUE', 'FALSE'];
         
         const csvContent = "\uFEFF" + [headers.join(','), sample1.join(','), sample2.join(',')].join('\n');
         
@@ -315,13 +315,14 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                     
                     // Basic validation: Name required (Index 0)
                     if (cols.length >= 1 && cols[0]) {
-                        // Safe date parser
+                        // Safe date parser supporting ISO with Timezone
                         const parseDate = (d: string) => {
                             if (!d) return '';
-                            const parsed = new Date(d);
+                            const cleanDate = d.trim();
+                            const parsed = new Date(cleanDate);
                             // Check if valid date
                             if (!isNaN(parsed.getTime())) {
-                                // GAS expects ISO string usually, but frontend saves as ISO
+                                // Convert to ISO string for backend consistency
                                 return parsed.toISOString();
                             }
                             return '';
