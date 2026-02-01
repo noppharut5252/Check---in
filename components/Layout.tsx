@@ -21,6 +21,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const APP_VERSION = 'v1.0.1'; // Updated version
   
   // Global Scanner State
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -180,25 +181,28 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
 
             <div className="p-4 border-t border-gray-100">
                 {isLoggedIn ? (
-                    <div className={`flex items-center gap-3 p-2 rounded-xl bg-gray-50 border border-gray-100 ${isCollapsed ? 'justify-center' : ''}`}>
-                        <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
-                            {userProfile.PictureUrl || userProfile.pictureUrl ? (
-                                <img src={userProfile.PictureUrl || userProfile.pictureUrl} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                                <UserCircle className="w-6 h-6 text-gray-400" />
+                    <div className={`flex flex-col gap-2 ${isCollapsed ? 'items-center' : ''}`}>
+                        <div className={`flex items-center gap-3 p-2 rounded-xl bg-gray-50 border border-gray-100 ${isCollapsed ? 'justify-center' : ''}`}>
+                            <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
+                                {userProfile.PictureUrl || userProfile.pictureUrl ? (
+                                    <img src={userProfile.PictureUrl || userProfile.pictureUrl} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                    <UserCircle className="w-6 h-6 text-gray-400" />
+                                )}
+                            </div>
+                            {!isCollapsed && (
+                                <>
+                                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleNav('/profile')}>
+                                        <p className="text-sm font-bold text-gray-800 truncate">{userProfile.Name || userProfile.displayName}</p>
+                                        <p className="text-xs text-gray-500 truncate capitalize">{userProfile.Role || userProfile.level}</p>
+                                    </div>
+                                    <button onClick={handleLogout} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                        <LogOut className="w-4 h-4" />
+                                    </button>
+                                </>
                             )}
                         </div>
-                        {!isCollapsed && (
-                            <>
-                                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleNav('/profile')}>
-                                    <p className="text-sm font-bold text-gray-800 truncate">{userProfile.Name || userProfile.displayName}</p>
-                                    <p className="text-xs text-gray-500 truncate capitalize">{userProfile.Role || userProfile.level}</p>
-                                </div>
-                                <button onClick={handleLogout} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                                    <LogOut className="w-4 h-4" />
-                                </button>
-                            </>
-                        )}
+                        {!isCollapsed && <div className="text-[10px] text-gray-300 text-center">{APP_VERSION}</div>}
                     </div>
                 ) : (
                     <button onClick={() => navigate('/login')} className={`w-full py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow hover:bg-blue-700 flex items-center justify-center ${isCollapsed ? 'px-0' : ''}`}>
@@ -250,6 +254,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                                 <LogIn className="w-4 h-4 mr-2" /> เข้าสู่ระบบ
                             </button>
                         )}
+                        <div className="text-center text-[10px] text-gray-400 mt-2">{APP_VERSION}</div>
                     </div>
                 </div>
             </div>
