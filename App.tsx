@@ -1,6 +1,6 @@
 
-import React, { useEffect, useState, useRef } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import UserCheckInDashboard from './components/UserCheckInDashboard';
 import CheckInHistory from './components/CheckInHistory';
@@ -25,6 +25,19 @@ import UserManagement from './components/UserManagement';
 import AnnouncementsView from './components/AnnouncementsView';
 import PassportView from './components/PassportView';
 
+// Wrapper component to handle side-effect redirects inside Router context
+const RedirectHandler = ({ target }: { target: string | null }) => {
+    const navigate = useNavigate();
+    useEffect(() => {
+        if (target) {
+            console.log("Redirecting to deep link:", target);
+            // Decode URI to handle Thai characters or special symbols in ID
+            navigate(decodeURIComponent(target)); 
+        }
+    }, [target, navigate]);
+    return null;
+};
+
 const App: React.FC = () => {
   const [data, setData] = useState<AppData>({ 
       checkInLocations: [], 
@@ -45,6 +58,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [initialRedirect, setInitialRedirect] = useState<string | null>(null);
   
   // Use sessionStorage for pendingRedirect to survive LIFF redirects
   const getPendingRedirect = () => sessionStorage.getItem('pendingRedirect');
@@ -53,45 +67,28 @@ const App: React.FC = () => {
       else sessionStorage.removeItem('pendingRedirect');
   };
 
-  // Helper to force hash update
-  const performRedirect = () => {
-      const redirect = getPendingRedirect();
-      if (redirect) {
-          console.log("Executing pending redirect:", redirect);
-          setPendingRedirect(null);
-          // Force hash update
-          window.location.hash = redirect;
-      }
-  };
-
   useEffect(() => {
       const initApp = async () => {
           setLoading(true);
           setError(null);
 
-          // 1. Capture Hash immediately (before Router renders)
+          // 1. Capture Hash immediately (Critical for QR Scans)
           const currentHash = window.location.hash;
           
-          // IMPORTANT: Capture deep link if present and valid
+          // IMPORTANT: Check if it is a deep link (not root, not home, not login)
           if (currentHash && 
               currentHash !== '#/' && 
               currentHash !== '#/home' && 
               !currentHash.startsWith('#/login') &&
               !currentHash.startsWith('#/profile')
           ) {
-              try {
-                  // Clean hash # char
-                  const path = decodeURIComponent(currentHash.substring(1));
-                  console.log("Deep link detected:", path);
-                  setPendingRedirect(path);
-              } catch (e) {
-                  setPendingRedirect(currentHash.substring(1));
-              }
+              const cleanPath = currentHash.substring(1); // Remove '#'
+              console.log("Deep link detected on boot:", cleanPath);
+              setPendingRedirect(cleanPath);
           }
 
           try {
               // 2. Parallel Load: Data & Auth
-              
               const dataPromise = fetchData().catch(e => {
                   console.error("Data Load Error", e);
                   throw new Error("ไม่สามารถโหลดข้อมูลได้ กรุณาตรวจสอบอินเทอร์เน็ต");
@@ -111,11 +108,11 @@ const App: React.FC = () => {
                       
                       setUser(u);
                       
-                      // Background Validation
+                      // Background Validation (Optimistic UI)
                       if (u.LineID || u.userline_id) {
                           checkUserRegistration(u.LineID || u.userline_id).then(dbUser => {
                               if (!dbUser) {
-                                  // User deleted remotely? Force re-register
+                                  // User deleted remotely?
                                   setUser({ ...u, Role: 'user' });
                                   setIsRegistering(true);
                                   localStorage.removeItem('comp_user');
@@ -125,7 +122,6 @@ const App: React.FC = () => {
                               }
                           }).catch(e => console.warn("Background Auth Check Failed", e));
                       }
-                      
                       return true; // Signal success
                   }
 
@@ -164,17 +160,17 @@ const App: React.FC = () => {
               const [dataRes, authSuccess] = await Promise.all([dataPromise, authPromise]);
               if (dataRes) setData(dataRes);
               
-              // FIX: Perform redirect BEFORE removing loading screen to ensure Router picks up correct Hash
-              if (authSuccess) {
-                  const redirect = getPendingRedirect();
-                  if (redirect) {
-                      console.log("Restoring deep link before render:", redirect);
-                      window.location.hash = redirect;
-                      setPendingRedirect(null);
-                  }
+              // 3. Finalize Navigation Logic
+              const savedRedirect = getPendingRedirect();
+              if (savedRedirect) {
+                  // If we have a pending redirect (from QR scan), prioritize it
+                  setInitialRedirect(savedRedirect);
+                  // Clear it from session so it doesn't persist forever
+                  setPendingRedirect(null);
+              } else if (authSuccess && !isRegistering) {
+                  // Normal login, no deep link -> handled by router default or component
               }
               
-              // Only stop loading after everything is done
               setLoading(false);
 
           } catch (err: any) {
@@ -193,9 +189,10 @@ const App: React.FC = () => {
       
       const redirect = getPendingRedirect();
       if (redirect) {
-          performRedirect();
+          setInitialRedirect(redirect);
+          setPendingRedirect(null);
       } else {
-          window.location.hash = '/home';
+          setInitialRedirect('/home');
       }
   };
 
@@ -204,10 +201,15 @@ const App: React.FC = () => {
       localStorage.setItem('comp_user', JSON.stringify(updatedUser));
       
       if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
-          console.log("Registration complete. Checking pending redirects...");
           setIsRegistering(false);
-          // Ensure redirection happens after state updates
-          setTimeout(performRedirect, 100);
+          // Check pending redirect after registration
+          const redirect = getPendingRedirect();
+          if (redirect) {
+              setInitialRedirect(redirect);
+              setPendingRedirect(null);
+          } else {
+              setInitialRedirect('/home');
+          }
       }
   };
 
@@ -253,6 +255,9 @@ const App: React.FC = () => {
   
   return (
     <HashRouter>
+        {/* Handle imperative redirects from state inside Router context */}
+        <RedirectHandler target={initialRedirect} />
+        
         <Routes>
             <Route path="/" element={<Navigate to={isRegistering ? "/profile" : "/home"} replace />} />
 
