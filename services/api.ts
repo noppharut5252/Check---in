@@ -112,6 +112,12 @@ export const deleteCheckInLog = async (id: string) => {
     return res.status === 'success';
 };
 
+// New: Update Survey Status
+export const updateCheckInSurveyStatus = async (checkInId: string, status: string) => {
+    const res = await apiRequest('updateCheckInSurveyStatus', { checkInId, status });
+    return res.status === 'success';
+};
+
 export const uploadImage = async (base64Data: string, filename: string) => {
     return await apiRequest('uploadFile', { data: base64Data, filename, mimeType: 'image/jpeg' });
 };
