@@ -69,17 +69,28 @@ const App: React.FC = () => {
           setLoading(true);
           setError(null);
 
-          // 1. Capture Hash immediately (before Router renders)
-          const currentHash = window.location.hash;
-          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login')) {
-              // Decode URI to handle encoded characters in QR codes
-              try {
-                  const path = decodeURIComponent(currentHash.substring(1));
-                  console.log("Deep link detected:", path);
-                  setPendingRedirect(path);
-              } catch (e) {
-                  // Fallback if decode fails
-                  setPendingRedirect(currentHash.substring(1));
+          // 1. Capture Target/Hash immediately (before Router renders)
+          // Priority: Query Param 'target' (from reliable LIFF QR) > Hash (Legacy)
+          const searchParams = new URLSearchParams(window.location.search);
+          const targetParam = searchParams.get('target');
+          
+          if (targetParam) {
+              const decodedTarget = decodeURIComponent(targetParam);
+              console.log("Deep link via Query Param:", decodedTarget);
+              setPendingRedirect(decodedTarget);
+              // Clean up URL if possible to avoid state pollution, but tricky in React strict mode
+          } else {
+              const currentHash = window.location.hash;
+              if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login')) {
+                  // Decode URI to handle encoded characters in QR codes
+                  try {
+                      const path = decodeURIComponent(currentHash.substring(1));
+                      console.log("Deep link via Hash:", path);
+                      setPendingRedirect(path);
+                  } catch (e) {
+                      // Fallback if decode fails
+                      setPendingRedirect(currentHash.substring(1));
+                  }
               }
           }
 
