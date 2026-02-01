@@ -4,9 +4,9 @@ import { AppData, CheckInActivity, CheckInLocation, CheckInUser } from '../types
 import { 
     MapPin, Camera, Navigation, AlertOctagon, CheckCircle, Loader2, Send, 
     MessageSquare, AlertTriangle, ArrowLeft, RefreshCw, FileCheck, Signal, 
-    SignalHigh, SignalLow, X, Zap, Check, Image, RotateCcw
+    SignalHigh, SignalLow, X, Zap, Check, Image, RotateCcw, FileText
 } from 'lucide-react';
-import { performCheckIn, uploadCheckInImage, getUserCheckInHistory } from '../services/api';
+import { performCheckIn, uploadCheckInImage, getUserCheckInHistory, updateCheckInSurveyStatus } from '../services/api';
 import { useParams, useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 
@@ -232,7 +232,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const [avgPos, setAvgPos] = useState<{ lat: number, lng: number } | null>(null);
     const [photo, setPhoto] = useState<string | null>(null);
     const [comment, setComment] = useState('');
-    const [checkedInDetail, setCheckedInDetail] = useState<any>(null);
+    const [checkedInDetail, setCheckedInDetail] = useState<any>(null); // This holds the CheckInID
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     
     // Notification State
@@ -433,6 +433,15 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         });
 
         if (res.status === 'success') {
+            // Need to set checkInDetail for survey linking, but response might not include ID directly in old API
+            // Usually performCheckIn returns basic success. 
+            // We might need to refetch history to get ID, or assume success and wait for user to click button.
+            // But we need checkInId to update status. 
+            // Let's refetch history quickly to get the latest log for this activity
+            const history = await getUserCheckInHistory(uid);
+            const latest = history.find((l: any) => l.ActivityID === activity.ActivityID);
+            setCheckedInDetail(latest);
+            
             setStatus('success');
             setNotification({ isOpen: false, type: 'success', title: '', message: '' }); // Close loading modal
         } else {
@@ -444,6 +453,20 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                 message: res.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ'
             });
         }
+    };
+
+    const handleSurveyClick = async () => {
+        if (!activity?.SurveyLink) return;
+        
+        // Open link immediately
+        window.open(activity.SurveyLink, '_blank');
+        
+        // Update status in background if we have ID
+        if (checkedInDetail?.CheckInID) {
+            await updateCheckInSurveyStatus(checkedInDetail.CheckInID, 'Done');
+        }
+        
+        navigate('/checkin-dashboard', { state: { viewMode: 'history' } });
     };
 
     // --- RENDER ---
@@ -460,12 +483,23 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                     <div className="mt-6 p-4 bg-green-50 rounded-xl text-green-800 text-sm font-mono border border-green-200">
                         {new Date().toLocaleString('th-TH')}
                     </div>
-                    {/* Redirect to History Page */}
+                    
+                    {/* Survey Button Section */}
+                    {activity.SurveyLink && (
+                        <button
+                            onClick={handleSurveyClick}
+                            className="mt-6 w-full py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl font-bold shadow-lg shadow-yellow-200 transition-transform active:scale-95 flex items-center justify-center gap-2 animate-bounce"
+                        >
+                            <FileText className="w-5 h-5" />
+                            ทำแบบประเมินความพึงพอใจ
+                        </button>
+                    )}
+
                     <button 
                         onClick={() => navigate('/checkin-dashboard', { state: { viewMode: 'history' } })} 
-                        className="mt-8 w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-200 transition-transform active:scale-95"
+                        className={`mt-4 w-full py-3 rounded-xl font-bold transition-transform active:scale-95 ${activity.SurveyLink ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200'}`}
                     >
-                        เสร็จสิ้น
+                        {activity.SurveyLink ? 'กลับหน้าหลัก' : 'เสร็จสิ้น'}
                     </button>
                 </div>
             </div>
@@ -487,6 +521,17 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                         <div className="flex justify-between"><span className="text-gray-500">เวลา</span><span>{new Date(checkedInDetail.Timestamp).toLocaleString('th-TH')}</span></div>
                     </div>
                     
+                    {/* Retroactive Survey Button */}
+                    {activity.SurveyLink && checkedInDetail.SurveyStatus !== 'Done' && (
+                        <button
+                            onClick={handleSurveyClick}
+                            className="w-full py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl font-bold shadow-md mb-3 flex items-center justify-center gap-2"
+                        >
+                            <FileText className="w-5 h-5" />
+                            ทำแบบประเมิน
+                        </button>
+                    )}
+
                     <button onClick={() => navigate(-1)} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">ย้อนกลับ</button>
                 </div>
             </div>
