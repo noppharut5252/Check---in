@@ -197,7 +197,7 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
             )}
 
             {viewMode === 'history' && showHistory ? (
-                <CheckInHistory user={user} />
+                <CheckInHistory user={user} data={data} />
             ) : (
                 <div className="px-1">
                     <div className="flex flex-col sm:flex-row gap-3 mt-2 mb-4">
