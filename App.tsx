@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import UserCheckInDashboard from './components/UserCheckInDashboard';
@@ -53,111 +53,100 @@ const App: React.FC = () => {
       else sessionStorage.removeItem('pendingRedirect');
   };
 
-  const loadData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-          const res = await fetchData();
-          setData(res);
-      } catch (error) {
-          console.error("Failed to load data", error);
-          setError("ไม่สามารถโหลดข้อมูลได้ กรุณาตรวจสอบอินเทอร์เน็ต");
-      } finally {
-          setLoading(false);
-      }
-  };
-
   useEffect(() => {
-      loadData();
-      
-      const initializeAuth = async () => {
-          // 1. ALWAYS Capture current hash path first (The destination from QR)
-          // If user scans a new QR, we must respect this new path immediately.
+      const initApp = async () => {
+          setLoading(true);
+          setError(null);
+
+          // 1. Capture Hash immediately (before Router renders)
           const currentHash = window.location.hash;
           if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login') && !currentHash.startsWith('#/profile')) {
-              // Always overwrite pending redirect if a specific path is requested
-              // This fixes the issue where user aborts, then scans again
               const path = currentHash.substring(1);
-              console.log("New scan detected, saving redirect:", path);
+              console.log("Deep link detected:", path);
               setPendingRedirect(path);
           }
 
-          // 2. Check local storage
-          const savedUserStr = localStorage.getItem('comp_user');
-          if (savedUserStr) {
-              const u = JSON.parse(savedUserStr);
+          try {
+              // 2. Parallel Load: Data & Auth
+              // We define promises but handle them carefully to set state
               
-              // CRITICAL FIX: Check if local user is actually complete
-              // If they aborted registration previously, they might have a user object but no Name/School
-              if (!u.Name || !u.SchoolID) {
-                  console.warn("Incomplete user found locally. Forcing registration.");
-                  setUser(u);
-                  setIsRegistering(true); // Force back to registration
-                  return; // Stop here, wait for registration to finish
-              }
+              const dataPromise = fetchData().catch(e => {
+                  console.error("Data Load Error", e);
+                  throw new Error("ไม่สามารถโหลดข้อมูลได้ กรุณาตรวจสอบอินเทอร์เน็ต");
+              });
 
-              setUser(u);
-              
-              // Validate Session against DB
-              const lineId = u.LineID || u.userline_id;
-              if (lineId) {
-                  checkUserRegistration(lineId).then(dbUser => {
-                      if (!dbUser) {
-                          console.warn("User not found in DB (deleted?), forcing registration");
-                          // Use partial data but force register
-                          setUser({ ...u, Role: 'user' }); 
+              const authPromise = (async () => {
+                  // A. Check Local Storage
+                  const savedUserStr = localStorage.getItem('comp_user');
+                  if (savedUserStr) {
+                      const u = JSON.parse(savedUserStr);
+                      // Incomplete Check
+                      if (!u.Name || !u.SchoolID) {
+                          setUser(u);
                           setIsRegistering(true);
-                          localStorage.removeItem('comp_user'); 
-                      } else {
-                          // Sync latest data
-                          if (JSON.stringify(u) !== JSON.stringify(dbUser)) {
+                          return;
+                      }
+                      
+                      setUser(u);
+                      
+                      // Background Validation (Fire & Forget for speed, or await if critical)
+                      if (u.LineID || u.userline_id) {
+                          checkUserRegistration(u.LineID || u.userline_id).then(dbUser => {
+                              if (!dbUser) {
+                                  // User deleted remotely? Force re-register
+                                  setUser({ ...u, Role: 'user' });
+                                  setIsRegistering(true);
+                                  localStorage.removeItem('comp_user');
+                              } else if (JSON.stringify(u) !== JSON.stringify(dbUser)) {
+                                  setUser(dbUser);
+                                  localStorage.setItem('comp_user', JSON.stringify(dbUser));
+                              }
+                          }).catch(e => console.warn("Background Auth Check Failed", e));
+                      }
+                      return;
+                  }
+
+                  // B. LIFF Init (if no local user)
+                  try {
+                      const profile = await initLiff();
+                      if (profile) {
+                          const dbUser = await checkUserRegistration(profile.userId);
+                          if (dbUser) {
                               setUser(dbUser);
                               localStorage.setItem('comp_user', JSON.stringify(dbUser));
+                          } else {
+                              // New User
+                              const partialUser: any = { 
+                                   UserID: 'LIFF-' + profile.userId, 
+                                   username: profile.displayName, 
+                                   LineID: profile.userId, 
+                                   PictureUrl: profile.pictureUrl,
+                                   Role: 'user',
+                                   Name: '', 
+                                   Surname: '',
+                                   Prefix: ''
+                              };
+                              setUser(partialUser);
+                              setIsRegistering(true);
                           }
-                          // If we are confirmed valid, check pending redirect
-                          checkAndRedirect();
                       }
-                  }).catch(e => console.warn("Auth check failed", e));
-              } else {
-                  // Admin or non-line user, assume valid locally for now
-                  checkAndRedirect();
-              }
-              return;
-          }
-
-          // 3. Try LIFF Init (If no local user)
-          try {
-              const profile = await initLiff();
-              if (profile) {
-                  // Check against DB
-                  const dbUser = await checkUserRegistration(profile.userId);
-                  
-                  if (dbUser) {
-                      // Exists -> Login
-                      handleLogin(dbUser);
-                  } else {
-                      // New User -> Setup temp user & Redirect to Register
-                      console.log("New user detected, sending to registration");
-                      const partialUser: any = { 
-                           UserID: 'LIFF-' + profile.userId, 
-                           username: profile.displayName, 
-                           LineID: profile.userId, 
-                           PictureUrl: profile.pictureUrl,
-                           Role: 'user',
-                           Name: '', 
-                           Surname: '',
-                           Prefix: ''
-                      };
-                      setUser(partialUser);
-                      setIsRegistering(true);
+                  } catch (e) {
+                      console.warn("LIFF Init Error", e);
                   }
-              }
-          } catch (e) {
-              console.error("Auth Error", e);
+              })();
+
+              // Wait for both
+              const [dataRes] = await Promise.all([dataPromise, authPromise]);
+              if (dataRes) setData(dataRes);
+
+          } catch (err: any) {
+              setError(err.message || "เกิดข้อผิดพลาดในการโหลด");
+          } finally {
+              setLoading(false);
           }
       };
 
-      initializeAuth();
+      initApp();
   }, []);
 
   const checkAndRedirect = () => {
@@ -165,6 +154,7 @@ const App: React.FC = () => {
       if (redirect) {
           console.log("Executing pending redirect:", redirect);
           setPendingRedirect(null);
+          // Small delay to allow Router to mount/update
           setTimeout(() => window.location.hash = redirect, 100);
       }
   };
@@ -180,11 +170,10 @@ const App: React.FC = () => {
       setUser(updatedUser);
       localStorage.setItem('comp_user', JSON.stringify(updatedUser));
       
-      // If we were registering, this completes it
-      // Critical: Ensure we actually have the required fields now
       if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
-          console.log("Registration completed successfully.");
+          console.log("Registration complete.");
           setIsRegistering(false);
+          // Force check redirect immediately
           checkAndRedirect();
       }
   };
@@ -219,7 +208,7 @@ const App: React.FC = () => {
                 <h3 className="text-xl font-bold text-gray-800 mb-2">เกิดข้อผิดพลาด</h3>
                 <p className="text-gray-500 mb-6">{error}</p>
                 <button 
-                    onClick={loadData}
+                    onClick={() => window.location.reload()}
                     className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
                 >
                     <RefreshCw className="w-5 h-5 mr-2" /> ลองใหม่อีกครั้ง
@@ -253,7 +242,7 @@ const App: React.FC = () => {
                 <Layout userProfile={user} data={data}>
                     {user && !isRegistering ? (
                         user.Role === 'admin' ? 
-                        <AdminCheckInManager data={data} user={user} onDataUpdate={loadData} /> : 
+                        <AdminCheckInManager data={data} user={user} onDataUpdate={() => window.location.reload()} /> : 
                         <UserCheckInDashboard data={data} user={user} />
                     ) : <LoginScreen onLoginSuccess={handleLogin} />}
                 </Layout>
@@ -279,7 +268,7 @@ const App: React.FC = () => {
 
             <Route path="/settings" element={
                 <Layout userProfile={user} data={data}>
-                    <SettingsView data={data} user={user} onDataUpdate={loadData} />
+                    <SettingsView data={data} user={user} onDataUpdate={() => window.location.reload()} />
                 </Layout>
             } />
 
@@ -291,17 +280,17 @@ const App: React.FC = () => {
 
             <Route path="/announcements" element={
                 <Layout userProfile={user} data={data}>
-                    <AnnouncementsView data={data} user={user} onDataUpdate={loadData} />
+                    <AnnouncementsView data={data} user={user} onDataUpdate={() => {}} />
                 </Layout>
             } />
 
             <Route path="/activity-dashboard/:activityId" element={
                 <Layout userProfile={user} data={data}>
-                    <ActivityDetailView data={data} user={user} onDataUpdate={loadData} />
+                    <ActivityDetailView data={data} user={user} onDataUpdate={() => {}} />
                 </Layout>
             } />
 
-            {/* Check-in route protected: Must exist and NOT be registering */}
+            {/* Check-in route protected */}
             <Route path="/checkin/:activityId" element={
                 user && !isRegistering ? (
                     <CheckInView data={data} user={user} />
