@@ -124,7 +124,8 @@ const App: React.FC = () => {
                   throw new Error("ไม่สามารถโหลดข้อมูลได้ กรุณาตรวจสอบอินเทอร์เน็ต");
               });
 
-              const authPromise = (async () => {
+              // Modify authPromise to return the User object directly
+              const authPromise = (async (): Promise<User | null> => {
                   // A. Check Local Storage first (Fastest)
                   const savedUserStr = localStorage.getItem('comp_user');
                   if (savedUserStr) {
@@ -135,7 +136,7 @@ const App: React.FC = () => {
                           if (!isUserComplete(u)) {
                               setUser(u);
                               setIsRegistering(true); // Force registration mode
-                              return true;
+                              return u; // Return user even if incomplete
                           }
                           
                           setUser(u);
@@ -154,7 +155,7 @@ const App: React.FC = () => {
                                   }
                               }).catch(e => console.warn("Background Auth Check Failed", e));
                           }
-                          return true; // Signal success
+                          return u; // Signal success with user object
                       } catch (e) {
                           localStorage.removeItem('comp_user');
                       }
@@ -174,7 +175,7 @@ const App: React.FC = () => {
                                   setUser(dbUser);
                                   localStorage.setItem('comp_user', JSON.stringify(dbUser));
                               }
-                              return true;
+                              return dbUser;
                           } else {
                               // New User Registration Flow
                               const partialUser: any = { 
@@ -189,26 +190,26 @@ const App: React.FC = () => {
                               };
                               setUser(partialUser);
                               setIsRegistering(true); // Force registration
+                              return partialUser;
                           }
                       }
                   } catch (e) {
                       console.warn("LIFF Init Error", e);
                   }
-                  return false;
+                  return null;
               })();
 
               // Wait for essential promises
-              const [dataRes, authSuccess] = await Promise.all([dataPromise, authPromise]);
+              const [dataRes, loadedUser] = await Promise.all([dataPromise, authPromise]);
               if (dataRes) setData(dataRes);
               
               // 3. Finalize Navigation Logic
               const savedRedirect = getPendingRedirect();
               
-              // ONLY redirect immediately if authenticated AND complete
-              // If not complete, we let the UI stay on 'isRegistering' (Profile)
-              // The redirect will happen later in 'handleUpdateUser'
+              // Correct Logic: Check 'loadedUser' (immediate value) instead of 'user' (stale state)
               if (savedRedirect) {
-                  if (authSuccess && user && isUserComplete(user)) {
+                  if (loadedUser && isUserComplete(loadedUser)) {
+                      console.log("User complete, redirecting to:", savedRedirect);
                       setInitialRedirect(savedRedirect);
                   } else {
                       console.log("Pending redirect saved, waiting for registration/login completion...");
