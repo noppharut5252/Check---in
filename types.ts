@@ -33,6 +33,7 @@ export interface CheckInActivity {
   RequirePhoto?: boolean; // New Field: Enforce photo upload
   IsLocked?: boolean; // Cluster Level Lock
   IsAreaLocked?: boolean; // Area Level Lock
+  SurveyLink?: string; // New Field: URL for feedback form
 }
 
 export interface CheckInUser {
@@ -85,6 +86,7 @@ export interface CheckInLog {
   UserName?: string;
   ActivityName?: string;
   LocationName?: string;
+  SurveyStatus?: string; // New Field: 'Pending' | 'Done'
 }
 
 export type User = CheckInUser;
@@ -353,5 +355,5 @@ export interface AppData {
   judges: Judge[];
   activityStatus?: any[];
   appConfig?: AppConfig;
-  passportConfig?: PassportConfig; // New Data Field
+  passportConfig?: PassportConfig; 
 }
