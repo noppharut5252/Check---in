@@ -46,7 +46,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   
-  // Use sessionStorage for pendingRedirect to survive LIFF redirects/reloads during auth
+  // Use sessionStorage for pendingRedirect to survive LIFF redirects
   const getPendingRedirect = () => sessionStorage.getItem('pendingRedirect');
   const setPendingRedirect = (path: string | null) => {
       if (path) sessionStorage.setItem('pendingRedirect', path);
@@ -71,56 +71,24 @@ const App: React.FC = () => {
       loadData();
       
       const initializeAuth = async () => {
-          // 1. Capture current hash path immediately (The destination from QR)
-          // This handles cases where user scans QR .../#/checkin/ACT-001
-          const currentHash = window.location.hash;
-          // Filter out default paths or login paths to avoid loops
-          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login') && !currentHash.startsWith('#/profile')) {
-              // Store path without the '#' if not already set (preserve earliest intent)
-              if (!getPendingRedirect()) {
-                  setPendingRedirect(currentHash.substring(1));
-                  console.log("Pending redirect saved:", currentHash.substring(1));
-              }
-          }
-
-          // 2. Check local storage first (Fast load)
-          const savedUserStr = localStorage.getItem('comp_user');
-          if (savedUserStr) {
-              const u = JSON.parse(savedUserStr);
-              setUser(u);
-              
-              // Validate Session: Check if user actually exists in DB (Sheet)
-              // Only check for LINE users (Admin users managed differently or manually)
-              const lineId = u.LineID || u.userline_id;
-              if (lineId) {
-                  checkUserRegistration(lineId).then(dbUser => {
-                      if (!dbUser) {
-                          console.warn("User not found in DB, forcing registration");
-                          // Use partial data from local storage to help refill, but force register
-                          setUser({ ...u, Role: 'user' }); 
-                          setIsRegistering(true);
-                          localStorage.removeItem('comp_user'); // Clear invalid session
-                      } else {
-                          // Sync latest data
-                          if (JSON.stringify(u) !== JSON.stringify(dbUser)) {
-                              console.log("Syncing user profile");
-                              setUser(dbUser);
-                              localStorage.setItem('comp_user', JSON.stringify(dbUser));
-                          }
-                      }
-                  }).catch(e => console.warn("Auth check failed", e));
-              }
-
-              // If we have a user (optimistic), check pending redirect
-              const redirect = getPendingRedirect();
-              if (redirect) {
-                  setPendingRedirect(null);
-                  setTimeout(() => window.location.hash = redirect, 100);
-              }
+          // Check local storage first
+          const savedUser = localStorage.getItem('comp_user');
+          if (savedUser) {
+              setUser(JSON.parse(savedUser));
               return;
           }
 
-          // 3. Try LIFF Init (If no local user)
+          // Capture current hash path before LIFF init/redirect logic
+          // This handles cases where user clicks a Flex Message link like .../#/checkin/ACT-001
+          const currentHash = window.location.hash;
+          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login')) {
+              // Store path without the '#' if not already set (preserve earliest intent)
+              if (!getPendingRedirect()) {
+                  setPendingRedirect(currentHash.substring(1));
+              }
+          }
+
+          // Try LIFF Init
           try {
               const profile = await initLiff();
               if (profile) {
@@ -143,7 +111,7 @@ const App: React.FC = () => {
                            Prefix: ''
                       };
                       setUser(partialUser);
-                      setIsRegistering(true); // Force registration view
+                      setIsRegistering(true);
                   }
               }
           } catch (e) {
@@ -159,10 +127,10 @@ const App: React.FC = () => {
       setIsRegistering(false);
       localStorage.setItem('comp_user', JSON.stringify(u));
       
-      // Check for pending redirect after login
+      // Check for pending redirect
       const redirect = getPendingRedirect();
       if (redirect) {
-          console.log("Redirecting to pending:", redirect);
+          // Clear it
           setPendingRedirect(null);
           // Allow UI to update then redirect
           setTimeout(() => {
@@ -179,15 +147,10 @@ const App: React.FC = () => {
       if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
           setIsRegistering(false);
           
-          // Check for pending redirect after registration
           const redirect = getPendingRedirect();
           if (redirect) {
-              console.log("Registration complete. Redirecting to:", redirect);
               setPendingRedirect(null);
-              // Force redirect
-              setTimeout(() => {
-                  window.location.hash = redirect;
-              }, 100);
+              window.location.hash = redirect;
           }
       }
   };
@@ -237,7 +200,7 @@ const App: React.FC = () => {
         <Routes>
             <Route path="/" element={<Navigate to={isRegistering ? "/profile" : "/home"} replace />} />
 
-            {/* Force profile for registration (This will catch ANY route if isRegistering is true) */}
+            {/* Force profile for registration */}
             {isRegistering && (
                 <Route path="*" element={
                     <Layout userProfile={user} data={data}>
