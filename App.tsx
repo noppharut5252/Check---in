@@ -59,8 +59,8 @@ const App: React.FC = () => {
       if (redirect) {
           console.log("Executing pending redirect:", redirect);
           setPendingRedirect(null);
-          // Small delay to ensure Router is ready
-          setTimeout(() => window.location.hash = redirect, 100);
+          // Force hash update
+          window.location.hash = redirect;
       }
   };
 
@@ -71,21 +71,20 @@ const App: React.FC = () => {
 
           // 1. Capture Hash immediately (before Router renders)
           const currentHash = window.location.hash;
-          // IMPORTANT: Do not overwrite pending redirect if we are just on the profile or login page directly
-          // This ensures if a user refreshes during registration, they don't lose the target activity
+          
+          // IMPORTANT: Capture deep link if present and valid
           if (currentHash && 
               currentHash !== '#/' && 
               currentHash !== '#/home' && 
               !currentHash.startsWith('#/login') &&
               !currentHash.startsWith('#/profile')
           ) {
-              // Decode URI to handle encoded characters in QR codes
               try {
+                  // Clean hash # char
                   const path = decodeURIComponent(currentHash.substring(1));
                   console.log("Deep link detected:", path);
                   setPendingRedirect(path);
               } catch (e) {
-                  // Fallback if decode fails
                   setPendingRedirect(currentHash.substring(1));
               }
           }
@@ -127,7 +126,6 @@ const App: React.FC = () => {
                           }).catch(e => console.warn("Background Auth Check Failed", e));
                       }
                       
-                      // CRITICAL: Trigger redirect check after restoring session
                       return true; // Signal success
                   }
 
@@ -139,7 +137,6 @@ const App: React.FC = () => {
                           if (dbUser) {
                               setUser(dbUser);
                               localStorage.setItem('comp_user', JSON.stringify(dbUser));
-                              // CRITICAL: Trigger redirect check after LIFF login
                               return true;
                           } else {
                               // New User
@@ -167,13 +164,18 @@ const App: React.FC = () => {
               const [dataRes, authSuccess] = await Promise.all([dataPromise, authPromise]);
               if (dataRes) setData(dataRes);
               
+              // FIX: Perform redirect BEFORE removing loading screen to ensure Router picks up correct Hash
+              if (authSuccess) {
+                  const redirect = getPendingRedirect();
+                  if (redirect) {
+                      console.log("Restoring deep link before render:", redirect);
+                      window.location.hash = redirect;
+                      setPendingRedirect(null);
+                  }
+              }
+              
               // Only stop loading after everything is done
               setLoading(false);
-
-              // Perform redirect logic immediately after loading state clears
-              if (authSuccess) {
-                  setTimeout(performRedirect, 100); 
-              }
 
           } catch (err: any) {
               setError(err.message || "เกิดข้อผิดพลาดในการโหลด");
