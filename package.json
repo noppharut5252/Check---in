@@ -2,7 +2,7 @@
 {
   "name": "checkin",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.1",
   "type": "module",
   "homepage": "https://noppharut5252.github.io/Checkin/",
   "scripts": {
