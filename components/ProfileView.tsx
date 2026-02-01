@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, AppData } from '../types';
-import { User as UserIcon, Save, School, Shield, Mail, Phone, Loader2, Link as LinkIcon, CheckCircle, AlertCircle, LogIn, LayoutGrid } from 'lucide-react';
+import { User as UserIcon, Save, School, Shield, Mail, Phone, Loader2, Link as LinkIcon, CheckCircle, AlertCircle, LogIn, LayoutGrid, Share, MoreVertical, PlusSquare, Smartphone, Check } from 'lucide-react';
 import { linkLineAccount, registerUser, updateUser } from '../services/api';
 import { initLiff, loginLiff } from '../services/liff';
 import SearchableSelect from './SearchableSelect';
@@ -13,25 +13,142 @@ interface ProfileViewProps {
   isRegistrationMode?: boolean;
 }
 
+const PDPA_TEXT = `
+1. **การเก็บรวบรวมข้อมูล**: ระบบจะจัดเก็บข้อมูลส่วนบุคคลของท่าน ได้แก่ ชื่อ-นามสกุล, เบอร์โทรศัพท์, ข้อมูลโรงเรียน/สังกัด และบัญชี LINE (หากมีการเชื่อมต่อ) เพื่อใช้ในการยืนยันตัวตนและบันทึกประวัติการเข้าร่วมกิจกรรม
+2. **วัตถุประสงค์**: ข้อมูลของท่านจะถูกใช้สำหรับการบริหารจัดการโครงการโรงเรียนสุจริต การออกเกียรติบัตร และการติดตามผลการดำเนินงานเท่านั้น ไม่มีการนำไปใช้เพื่อการพาณิชย์
+3. **การเปิดเผยข้อมูล**: ข้อมูลของท่านอาจถูกแสดงผลในรูปแบบสถิติภาพรวม หรือรายชื่อผู้เข้าร่วมกิจกรรมภายในระบบนี้
+4. **สิทธิ์ของท่าน**: ท่านสามารถขอแก้ไข หรือลบข้อมูลของท่านออกจากระบบได้โดยติดต่อผู้ดูแลระบบ
+`;
+
+const InstallGuideModal = ({ isOpen, onClose, platform }: { isOpen: boolean, onClose: () => void, platform: 'ios' | 'android' | 'desktop' }) => {
+    const [activeTab, setActiveTab] = useState<'ios' | 'android'>(platform === 'ios' ? 'ios' : 'android');
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
+            <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]">
+                
+                {/* Header */}
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-center text-white shrink-0">
+                    <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-md border-2 border-white/30">
+                        <Check className="w-8 h-8 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold">ลงทะเบียนสำเร็จ!</h3>
+                    <p className="text-blue-100 text-sm mt-1">เพื่อความสะดวก กรุณาเพิ่มแอปไว้ที่หน้าจอหลัก</p>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex border-b border-gray-100 shrink-0">
+                    <button 
+                        onClick={() => setActiveTab('ios')}
+                        className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'ios' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <span className="text-lg">🍎</span> iOS (iPhone)
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('android')}
+                        className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'android' ? 'text-green-600 border-b-2 border-green-600 bg-green-50' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <span className="text-lg">🤖</span> Android
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
+                    {activeTab === 'ios' ? (
+                        <div className="space-y-4">
+                            <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                                <div className="bg-gray-100 p-2 rounded-lg shrink-0"><Share className="w-6 h-6 text-blue-500" /></div>
+                                <div>
+                                    <h4 className="font-bold text-gray-800 text-sm">1. กดปุ่มแชร์ (Share)</h4>
+                                    <p className="text-xs text-gray-500">ที่แถบเมนูด้านล่างของ Safari</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-center">
+                                <div className="h-8 w-0.5 bg-gray-300"></div>
+                            </div>
+                            <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                                <div className="bg-gray-100 p-2 rounded-lg shrink-0"><PlusSquare className="w-6 h-6 text-gray-600" /></div>
+                                <div>
+                                    <h4 className="font-bold text-gray-800 text-sm">2. เพิ่มไปยังหน้าจอโฮม</h4>
+                                    <p className="text-xs text-gray-500">เลื่อนหาเมนู "Add to Home Screen"</p>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                                <div className="bg-gray-100 p-2 rounded-lg shrink-0"><MoreVertical className="w-6 h-6 text-gray-600" /></div>
+                                <div>
+                                    <h4 className="font-bold text-gray-800 text-sm">1. กดเมนู 3 จุด</h4>
+                                    <p className="text-xs text-gray-500">ที่มุมขวาบนของ Chrome</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-center">
+                                <div className="h-8 w-0.5 bg-gray-300"></div>
+                            </div>
+                            <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                                <div className="bg-gray-100 p-2 rounded-lg shrink-0"><Smartphone className="w-6 h-6 text-green-600" /></div>
+                                <div>
+                                    <h4 className="font-bold text-gray-800 text-sm">2. ติดตั้งแอป / เพิ่มลงหน้าจอ</h4>
+                                    <p className="text-xs text-gray-500">เลือก "Install App" หรือ "Add to Home screen"</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 bg-white border-t border-gray-100 shrink-0">
+                    <button 
+                        onClick={onClose}
+                        className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center"
+                    >
+                        เริ่มใช้งานทันที <div className="ml-2">🚀</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isRegistrationMode = false }) => {
   const [prefix, setPrefix] = useState(user.Prefix || '');
   const [name, setName] = useState(user.Name || '');
   const [surname, setSurname] = useState(user.Surname || '');
   const [tel, setTel] = useState(user.tel || '');
   const [email, setEmail] = useState(user.email || '');
-  
-  // School is now free text input (stored in SchoolID field for consistency)
   const [schoolName, setSchoolName] = useState(user.SchoolID || '');
-  // Cluster is selectable
   const [cluster, setCluster] = useState(user.Cluster || '');
+  
+  // PDPA State
+  const [acceptedPdpa, setAcceptedPdpa] = useState(false);
+  
+  // Install Guide State
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [tempSavedUser, setTempSavedUser] = useState<User | null>(null);
   
   const [isSaving, setIsSaving] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  // Detect OS for Guide
+  const getMobileOS = () => {
+    const ua = navigator.userAgent;
+    if (/android/i.test(ua)) return 'android';
+    if (/iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return 'ios';
+    return 'desktop';
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (isRegistrationMode && !acceptedPdpa) {
+        setMessage({ type: 'error', text: 'กรุณายอมรับนโยบายคุ้มครองข้อมูลส่วนบุคคล (PDPA)' });
+        return;
+    }
+
     if (!cluster) {
         setMessage({ type: 'error', text: 'กรุณาเลือกสังกัด/สำนักงานเขต' });
         return;
@@ -55,11 +172,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
         Surname: surname, 
         tel, 
         email, 
-        SchoolID: schoolName, // Using SchoolID field to store School Name text
+        SchoolID: schoolName, 
         Cluster: cluster,
-        // Ensure username (LINE Name) is preserved
         username: user.username,
-        // Ensure LineID is preserved
         lineId: user.LineID || user.userline_id
     };
 
@@ -68,19 +183,23 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
        let success = false;
 
        if (isRegistrationMode) {
-           // Call Register API (Create new row)
            const res = await registerUser(userData);
            success = res.status === 'success';
            if(success) resultUser = res.user;
        } else {
-           // Call Update API (Update existing row)
            success = await updateUser(userData);
            if (success) resultUser = userData;
        }
        
        if (success && resultUser) {
-           onUpdateUser(resultUser);
-           setMessage({ type: 'success', text: isRegistrationMode ? 'ลงทะเบียนเรียบร้อยแล้ว' : 'บันทึกข้อมูลเรียบร้อยแล้ว' });
+           if (isRegistrationMode) {
+               // Show Install Guide first, hold off on onUpdateUser
+               setTempSavedUser(resultUser);
+               setShowInstallGuide(true);
+           } else {
+               onUpdateUser(resultUser);
+               setMessage({ type: 'success', text: 'บันทึกข้อมูลเรียบร้อยแล้ว' });
+           }
        } else {
            setMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการบันทึก' });
        }
@@ -89,6 +208,13 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
     } finally {
        setIsSaving(false);
     }
+  };
+
+  const finishInstallGuide = () => {
+      setShowInstallGuide(false);
+      if (tempSavedUser) {
+          onUpdateUser(tempSavedUser);
+      }
   };
 
   const handleLinkLine = async () => {
@@ -119,15 +245,24 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
   const prefixOptions = ['นาย', 'นาง', 'นางสาว', 'เด็กชาย', 'เด็กหญิง', 'ว่าที่ร้อยตรี'];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
+    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500 pb-24">
       
+      {/* Install Guide Modal */}
+      <InstallGuideModal 
+          isOpen={showInstallGuide} 
+          onClose={finishInstallGuide} 
+          platform={getMobileOS()}
+      />
+
       {/* Registration Mode Header */}
       {isRegistrationMode && (
-          <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-start gap-3">
-              <AlertCircle className="w-6 h-6 text-yellow-600 shrink-0 mt-0.5" />
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3 shadow-sm">
+              <div className="bg-blue-100 p-2 rounded-full text-blue-600 shrink-0">
+                  <UserIcon className="w-6 h-6" />
+              </div>
               <div>
-                  <h3 className="font-bold text-yellow-800">ลงทะเบียนสมาชิกใหม่</h3>
-                  <p className="text-sm text-yellow-700 mt-1">กรุณากรอกข้อมูลส่วนตัวให้ครบถ้วนเพื่อเริ่มใช้งานระบบ</p>
+                  <h3 className="font-bold text-blue-800 text-lg">ลงทะเบียนสมาชิกใหม่</h3>
+                  <p className="text-sm text-blue-600 mt-1">ยินดีต้อนรับสู่ UprightSchool! กรุณากรอกข้อมูลส่วนตัวให้ครบถ้วนเพื่อเริ่มใช้งาน</p>
               </div>
           </div>
       )}
@@ -140,6 +275,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Left Column: Avatar & Summary */}
         <div className="md:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center text-center">
                 <div className="relative mb-4 group">
@@ -150,17 +286,16 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
                             className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg"
                         />
                     ) : (
-                        <div className="w-32 h-32 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 border-4 border-white shadow-lg">
+                        <div className="w-32 h-32 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-300 border-4 border-white shadow-lg">
                             <UserIcon className="w-16 h-16" />
                         </div>
                     )}
                 </div>
-                {/* Display Formal Name if available, else show Username (LINE Name) */}
                 <h3 className="text-xl font-bold text-gray-900">{name ? `${prefix}${name} ${surname}` : user.username}</h3>
                 
                 {user.username && user.username !== name && (
                     <p className="text-sm text-gray-500 mb-4 flex items-center justify-center gap-1">
-                        <span className="text-green-600 font-bold">LINE:</span> {user.username}
+                        <span className="text-green-600 font-bold">LINE Name:</span> {user.username}
                     </p>
                 )}
                 
@@ -176,7 +311,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
                             <button 
                                 onClick={handleLinkLine}
                                 disabled={isLinking}
-                                className="w-full flex items-center justify-center p-3 bg-[#06C755] text-white rounded-lg text-sm font-medium hover:bg-[#05b34c] transition-colors disabled:opacity-70 shadow-sm"
+                                className="w-full flex items-center justify-center p-3 bg-[#06C755] text-white rounded-lg text-sm font-medium hover:bg-[#05b34c] transition-colors disabled:opacity-70 shadow-sm active:scale-95"
                             >
                                 {isLinking ? <Loader2 className="w-4 h-4 animate-spin" /> : <LinkIcon className="w-4 h-4 mr-2" />}
                                 เชื่อมต่อกับ LINE
@@ -187,6 +322,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
             </div>
         </div>
 
+        {/* Right Column: Form */}
         <div className="md:col-span-2">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
@@ -272,6 +408,34 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
                             </div>
                         </div>
 
+                        {/* PDPA Section - Only show for registration */}
+                        {isRegistrationMode && (
+                            <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                                <h4 className="font-bold text-gray-800 flex items-center mb-2">
+                                    <Shield className="w-4 h-4 mr-2 text-green-600" />
+                                    นโยบายคุ้มครองข้อมูลส่วนบุคคล (PDPA)
+                                </h4>
+                                <div className="bg-white border border-gray-200 rounded-lg p-3 h-32 overflow-y-auto text-xs text-gray-600 leading-relaxed mb-3 shadow-inner custom-scrollbar">
+                                    <pre className="whitespace-pre-wrap font-sans">{PDPA_TEXT.trim()}</pre>
+                                </div>
+                                <label className="flex items-start cursor-pointer group">
+                                    <div className="relative flex items-center">
+                                        <input 
+                                            type="checkbox" 
+                                            className="sr-only peer"
+                                            checked={acceptedPdpa}
+                                            onChange={(e) => setAcceptedPdpa(e.target.checked)}
+                                        />
+                                        <div className="w-5 h-5 border-2 border-gray-300 rounded bg-white peer-checked:bg-green-500 peer-checked:border-green-500 transition-colors"></div>
+                                        <Check className="w-3.5 h-3.5 text-white absolute left-0.5 top-0.5 opacity-0 peer-checked:opacity-100 transition-opacity" />
+                                    </div>
+                                    <span className="ml-2 text-sm text-gray-700 select-none group-hover:text-gray-900">
+                                        ข้าพเจ้ายอมรับข้อตกลงและยินยอมให้ใช้ข้อมูลเพื่อวัตถุประสงค์ดังกล่าว
+                                    </span>
+                                </label>
+                            </div>
+                        )}
+
                         {message && (
                             <div className={`p-4 rounded-lg text-sm flex items-start shadow-sm animate-in fade-in slide-in-from-top-2 duration-300 ${message.type === 'success' ? 'bg-green-50 text-green-800 border-l-4 border-green-500' : 'bg-red-50 text-red-800 border-l-4 border-red-500'}`}>
                                 {message.type === 'success' ? <CheckCircle className="w-5 h-5 mr-3 flex-shrink-0 text-green-600" /> : <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0 text-red-600" />}
@@ -280,8 +444,12 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
                         )}
 
                         <div className="pt-4 flex justify-end">
-                            <button type="submit" disabled={isSaving} className="flex items-center px-6 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70">
-                                {isSaving ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : (isRegistrationMode ? <LogIn className="w-5 h-5 mr-2" /> : <Save className="w-5 h-5 mr-2" />)}
+                            <button 
+                                type="submit" 
+                                disabled={isSaving || (isRegistrationMode && !acceptedPdpa)} 
+                                className="flex items-center px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95 disabled:opacity-50 disabled:scale-100 disabled:shadow-none"
+                            >
+                                {isSaving ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : (isRegistrationMode ? <CheckCircle className="w-5 h-5 mr-2" /> : <Save className="w-5 h-5 mr-2" />)}
                                 {isRegistrationMode ? 'ยืนยันการลงทะเบียน' : 'บันทึกการเปลี่ยนแปลง'}
                             </button>
                         </div>
