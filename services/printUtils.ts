@@ -69,7 +69,7 @@ export const generatePosterHTML = async (
         } else {
             // Activity Check-in Mode: LIFF Deep Link
             // Construct URL: https://liff.line.me/<ID>/#/checkin/<ACT_ID>
-            // This ensures opening inside LINE context -> App.tsx handles routing
+            // This ensures opening inside LINE context -> App.tsx handles routing hash
             url = `${LIFF_URL}/#/checkin/${act.ActivityID}`;
             
             headerTitle = "Check-In Point";
