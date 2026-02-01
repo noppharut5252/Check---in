@@ -84,11 +84,34 @@ const App: React.FC = () => {
           }
 
           // 2. Check local storage first (Fast load)
-          const savedUser = localStorage.getItem('comp_user');
-          if (savedUser) {
-              const u = JSON.parse(savedUser);
+          const savedUserStr = localStorage.getItem('comp_user');
+          if (savedUserStr) {
+              const u = JSON.parse(savedUserStr);
               setUser(u);
-              // If we have a user and a pending redirect, go there
+              
+              // Validate Session: Check if user actually exists in DB (Sheet)
+              // Only check for LINE users (Admin users managed differently or manually)
+              const lineId = u.LineID || u.userline_id;
+              if (lineId) {
+                  checkUserRegistration(lineId).then(dbUser => {
+                      if (!dbUser) {
+                          console.warn("User not found in DB, forcing registration");
+                          // Use partial data from local storage to help refill, but force register
+                          setUser({ ...u, Role: 'user' }); 
+                          setIsRegistering(true);
+                          localStorage.removeItem('comp_user'); // Clear invalid session
+                      } else {
+                          // Sync latest data
+                          if (JSON.stringify(u) !== JSON.stringify(dbUser)) {
+                              console.log("Syncing user profile");
+                              setUser(dbUser);
+                              localStorage.setItem('comp_user', JSON.stringify(dbUser));
+                          }
+                      }
+                  }).catch(e => console.warn("Auth check failed", e));
+              }
+
+              // If we have a user (optimistic), check pending redirect
               const redirect = getPendingRedirect();
               if (redirect) {
                   setPendingRedirect(null);
