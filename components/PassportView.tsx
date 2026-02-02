@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppData, User, PassportMission, CheckInLog } from '../types';
-import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check } from 'lucide-react';
+import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check, Clock } from 'lucide-react';
 import { getUserCheckInHistory } from '../services/api';
 // @ts-ignore
 import confetti from 'canvas-confetti';
@@ -22,7 +23,7 @@ const PASSPORT_STYLES = `
       0 4px 6px -1px rgba(0, 0, 0, 0.1), 
       0 2px 4px -1px rgba(0, 0, 0, 0.06),
       inset 0 0 20px rgba(0,0,0,0.05);
-    border: 1px solid #e5e5e5;
+    border: 2px solid #e5e5e5;
   }
   .ink-stamp {
     mask-image: url('https://www.transparenttextures.com/patterns/rough-paper.png'); 
@@ -46,8 +47,8 @@ const PASSPORT_STYLES = `
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    width: 80px;
-    height: 80px;
+    width: 90px;
+    height: 90px;
     box-shadow: inset 0 0 10px currentColor;
   }
 `;
@@ -154,7 +155,7 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
 
     // --- Core Logic: Calculate Progress ---
     const getMissionStatus = (mission: PassportMission) => {
-        if (!mission) return { progress: 0, total: 0, isComplete: false, reqStatus: [] };
+        if (!mission) return { progress: 0, total: 0, isComplete: false, reqStatus: [], completionTime: null };
 
         const missionDate = mission.date;
         
@@ -167,22 +168,34 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
 
         // 2. Requirements Logic
         let completedReqs = 0;
+        let lastCompleteTimestamp = 0;
+
         const reqStatus = mission.requirements.map(req => {
             let achieved = false;
             let currentVal = 0;
+            let latestLogTime = 0;
 
             if (req.type === 'specific_activity') {
                 // BUG FIX: For specific activity, check ALL logs (Global History), not just today's
-                // This fixes the issue where checking in yesterday didn't count for a specific task
                 const found = userLogs.find(l => String(l.ActivityID).trim() === String(req.targetId).trim());
                 if (found) { 
                     achieved = true; 
                     currentVal = 1; 
+                    latestLogTime = new Date(found.Timestamp).getTime();
                 }
             } else if (req.type === 'total_count') {
-                // For counters, strictly check DAILY logs to prevent spamming from history
+                // For counters, strictly check DAILY logs
                 currentVal = dailyLogs.length;
-                if (currentVal >= req.targetValue) achieved = true;
+                if (currentVal >= req.targetValue) {
+                    achieved = true;
+                    // Find the Nth log that satisfied the condition
+                    if (dailyLogs.length > 0) {
+                        const sorted = dailyLogs.sort((a,b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
+                        // Use the timestamp of the last required check-in
+                        const targetLog = sorted[Math.min(sorted.length - 1, req.targetValue - 1)]; 
+                        latestLogTime = new Date(targetLog.Timestamp).getTime();
+                    }
+                }
             } else if (req.type === 'category_count') {
                 // Category counts also strictly daily
                 const catLogs = dailyLogs.filter(l => {
@@ -190,10 +203,21 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                     return act?.category === req.targetId;
                 });
                 currentVal = catLogs.length;
-                if (currentVal >= req.targetValue) achieved = true;
+                if (currentVal >= req.targetValue) {
+                    achieved = true;
+                    if (catLogs.length > 0) {
+                        const sorted = catLogs.sort((a,b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
+                        const targetLog = sorted[Math.min(sorted.length - 1, req.targetValue - 1)];
+                        latestLogTime = new Date(targetLog.Timestamp).getTime();
+                    }
+                }
             }
 
-            if (achieved) completedReqs++;
+            if (achieved) {
+                completedReqs++;
+                if (latestLogTime > lastCompleteTimestamp) lastCompleteTimestamp = latestLogTime;
+            }
+            
             return { ...req, achieved, currentVal };
         });
 
@@ -203,7 +227,8 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
             progress: completedReqs,
             total: mission.requirements.length,
             isComplete,
-            reqStatus
+            reqStatus,
+            completionTime: isComplete && lastCompleteTimestamp > 0 ? new Date(lastCompleteTimestamp) : null
         };
     };
 
@@ -212,9 +237,8 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
         if (loading) return;
         missions.forEach(m => {
             const status = getMissionStatus(m);
-            // Simple check: If complete and this is the active view (to prevent spam on load)
             if (status.isComplete && activeMissionId === m.id) {
-                // Trigger only if we haven't flagged it locally (optional, for now just allow re-trigger on view)
+                // Can trigger sound here if desired
             }
         });
     }, [userLogs, activeMissionId]);
@@ -226,16 +250,6 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
             origin: { y: 0.6 },
             colors: ['#EF4444', '#10B981', '#F59E0B', '#3B82F6']
         });
-    };
-
-    // --- Helper for Stamp Color ---
-    const getStampColor = (colorClass: string) => {
-        if (colorClass.includes('yellow')) return 'text-yellow-600 border-yellow-600';
-        if (colorClass.includes('orange')) return 'text-orange-600 border-orange-600';
-        if (colorClass.includes('blue')) return 'text-blue-600 border-blue-600';
-        if (colorClass.includes('purple')) return 'text-purple-600 border-purple-600';
-        if (colorClass.includes('green')) return 'text-green-600 border-green-600';
-        return 'text-indigo-600 border-indigo-600';
     };
 
     if (loading) {
@@ -316,18 +330,29 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                 {missions.map((mission, idx) => {
                     const status = getMissionStatus(mission);
                     const isToday = new Date(mission.date).toDateString() === new Date().toDateString();
-                    const themeColor = getStampColor(mission.rewardColor);
+                    // Fallback color if undefined
+                    const cardColor = mission.rewardColor || '#F59E0B'; 
 
                     return (
                         <div 
                             key={mission.id} 
                             ref={(el) => { missionRefs.current[mission.id] = el; }}
-                            className={`bg-paper passport-card rounded-2xl overflow-hidden transition-all duration-500 ${isToday ? 'ring-4 ring-yellow-400/50 transform scale-[1.02]' : ''}`}
+                            className={`bg-paper passport-card rounded-2xl overflow-hidden transition-all duration-500 ${isToday ? 'ring-4 ring-offset-2 ring-yellow-400/50 transform scale-[1.02]' : ''}`}
+                            style={{ 
+                                borderColor: cardColor,
+                                backgroundColor: isToday ? '#fff' : '#fdfbf7'
+                            }} 
                         >
                             {/* Mission Header */}
-                            <div className="p-4 border-b border-gray-200 border-dashed flex justify-between items-center bg-white/50">
+                            <div 
+                                className="p-4 border-b border-dashed flex justify-between items-center" 
+                                style={{ 
+                                    borderBottomColor: cardColor + '60',
+                                    backgroundColor: cardColor + '10' // Tint header
+                                }}
+                            >
                                 <div>
-                                    <h3 className="font-bold text-gray-800 text-lg flex items-center">
+                                    <h3 className="font-bold text-lg flex items-center" style={{ color: cardColor }}>
                                         {isToday && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full mr-2 shadow-sm animate-pulse">TODAY</span>}
                                         {mission.title}
                                     </h3>
@@ -343,8 +368,8 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                             {/* Mission Body */}
                             <div className="p-6 relative">
                                 {mission.description && (
-                                    <div className="mb-6 p-3 bg-blue-50/50 rounded-xl border border-blue-100 text-sm text-gray-600 leading-relaxed font-handwriting">
-                                        "{mission.description}"
+                                    <div className="mb-6 p-3 bg-white/60 rounded-xl border text-sm text-gray-600 leading-relaxed font-handwriting whitespace-pre-wrap shadow-sm" style={{ borderColor: cardColor + '30' }}>
+                                        {mission.description}
                                     </div>
                                 )}
 
@@ -353,21 +378,34 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                     {status.reqStatus.map((req, rIdx) => (
                                         <div key={req.id} className="flex items-center gap-4">
                                             <div className="relative">
-                                                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all duration-500 ${req.achieved ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-gray-300 text-gray-400'}`}>
+                                                <div 
+                                                    className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all duration-500 ${req.achieved ? 'text-white' : 'bg-white border-gray-300 text-gray-400'}`} 
+                                                    style={req.achieved ? { backgroundColor: cardColor, borderColor: cardColor } : {}}
+                                                >
                                                     {req.achieved ? <Check className="w-5 h-5" /> : (rIdx + 1)}
                                                 </div>
                                                 {/* Connecting Line */}
                                                 {rIdx < status.reqStatus.length - 1 && (
-                                                    <div className={`absolute top-8 left-1/2 w-0.5 h-6 -ml-px ${req.achieved && status.reqStatus[rIdx+1].achieved ? 'bg-green-300' : 'bg-gray-200'}`}></div>
+                                                    <div className="absolute top-8 left-1/2 w-0.5 h-6 -ml-px bg-gray-200">
+                                                        {req.achieved && status.reqStatus[rIdx+1].achieved && (
+                                                            <div className="w-full h-full" style={{ backgroundColor: cardColor + '80' }}></div>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
-                                            <div className={`flex-1 p-3 rounded-xl border transition-all ${req.achieved ? 'bg-green-50/50 border-green-200' : 'bg-white border-gray-200'}`}>
-                                                <p className={`text-sm font-medium ${req.achieved ? 'text-green-800' : 'text-gray-600'}`}>{req.label}</p>
+                                            <div 
+                                                className={`flex-1 p-3 rounded-xl border transition-all ${req.achieved ? '' : 'border-gray-200 bg-white/50'}`} 
+                                                style={req.achieved ? { borderColor: cardColor + '50', backgroundColor: cardColor + '10' } : {}}
+                                            >
+                                                <p className={`text-sm font-medium ${req.achieved ? 'text-gray-900' : 'text-gray-600'}`}>{req.label}</p>
                                                 <div className="flex justify-between items-center mt-1">
-                                                    <div className="h-1.5 flex-1 bg-gray-100 rounded-full overflow-hidden mr-3">
+                                                    <div className="h-1.5 flex-1 bg-gray-200 rounded-full overflow-hidden mr-3">
                                                         <div 
-                                                            className={`h-full rounded-full transition-all duration-700 ${req.achieved ? 'bg-green-500' : 'bg-gray-300'}`} 
-                                                            style={{ width: `${Math.min(100, (req.currentVal / req.targetValue) * 100)}%` }}
+                                                            className="h-full rounded-full transition-all duration-700"
+                                                            style={{ 
+                                                                width: `${Math.min(100, (req.currentVal / req.targetValue) * 100)}%`,
+                                                                backgroundColor: req.achieved ? cardColor : '#d1d5db'
+                                                            }}
                                                         ></div>
                                                     </div>
                                                     <span className="text-[10px] text-gray-400 font-mono">{req.currentVal}/{req.targetValue}</span>
@@ -378,21 +416,38 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                 </div>
 
                                 {/* STAMP AREA */}
-                                <div className="mt-8 flex justify-center items-center relative h-32 ink-stamp-container">
+                                <div className="mt-8 flex flex-col justify-center items-center relative h-40 ink-stamp-container">
                                     {status.isComplete ? (
-                                        <div className={`ink-stamp ${themeColor} relative group cursor-pointer`} onClick={() => { triggerConfetti(); setShowRedeem(mission); }}>
-                                            <div className="stamp-border">
-                                                <div className="text-[10px] font-bold uppercase tracking-widest border-b border-current pb-1 mb-1">Passed</div>
-                                                <Award className="w-8 h-8 fill-current" />
-                                                <div className="text-[9px] font-bold uppercase mt-1">{mission.rewardLabel}</div>
+                                        <>
+                                            <div 
+                                                className="ink-stamp relative group cursor-pointer mb-2" 
+                                                style={{ color: cardColor, borderColor: cardColor }}
+                                                onClick={() => { triggerConfetti(); setShowRedeem(mission); }}
+                                            >
+                                                {mission.stampImage ? (
+                                                    <img 
+                                                        src={mission.stampImage} 
+                                                        className="w-24 h-24 object-contain filter drop-shadow-md transform hover:scale-105 transition-transform" 
+                                                        alt="Stamp"
+                                                        style={{ filter: `drop-shadow(0 2px 4px ${cardColor}60)` }}
+                                                    />
+                                                ) : (
+                                                    <div className="stamp-border">
+                                                        <div className="text-[10px] font-bold uppercase tracking-widest border-b-2 border-current pb-1 mb-1">Passed</div>
+                                                        <Award className="w-8 h-8 fill-current" />
+                                                        <div className="text-[9px] font-bold uppercase mt-1 text-center leading-tight px-1">{mission.rewardLabel}</div>
+                                                    </div>
+                                                )}
                                             </div>
-                                            {/* Redeem Button Overlay */}
-                                            <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 w-max opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <span className="bg-black text-white text-xs px-2 py-1 rounded shadow-lg">แตะเพื่อแลกรางวัล</span>
-                                            </div>
-                                        </div>
+                                            {status.completionTime && (
+                                                <div className="text-[10px] text-gray-500 font-mono flex items-center bg-white/80 px-2 py-1 rounded-full shadow-sm border border-gray-200">
+                                                    <Clock className="w-3 h-3 mr-1 text-green-500"/>
+                                                    Completed: {status.completionTime.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} {status.completionTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
+                                                </div>
+                                            )}
+                                        </>
                                     ) : (
-                                        <div className="border-4 border-dashed border-gray-200 rounded-full w-24 h-24 flex flex-col items-center justify-center text-gray-300">
+                                        <div className="border-4 border-dashed border-gray-300 rounded-full w-24 h-24 flex flex-col items-center justify-center text-gray-300">
                                             <Target className="w-8 h-8 mb-1" />
                                             <span className="text-[10px] font-bold uppercase">Mission</span>
                                             <span className="text-[9px]">Incomplete</span>
@@ -404,7 +459,8 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                 {status.isComplete && (
                                     <button 
                                         onClick={() => setShowRedeem(mission)}
-                                        className="w-full mt-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                                        className="w-full mt-4 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                                        style={{ backgroundColor: cardColor }}
                                     >
                                         <Gift className="w-5 h-5 animate-pulse" /> แลกของรางวัล (Redeem)
                                     </button>
