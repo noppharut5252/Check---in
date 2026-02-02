@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { AppData, CheckInUser } from '../types';
-import { MapPin, Navigation, Search, LocateFixed, Loader2, Clock, Users, QrCode, ScanLine, History, LayoutGrid, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { MapPin, Navigation, Search, LocateFixed, Loader2, Clock, Users, QrCode, ScanLine, History, LayoutGrid, ChevronLeft, ChevronRight, Filter, MousePointerClick } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import QRScannerModal from './QRScannerModal';
 import CheckInHistory from './CheckInHistory';
@@ -248,7 +248,8 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
                                 return (
                                     <div 
                                         key={act.ActivityID}
-                                        onClick={() => { if (isAvailable) setIsScannerOpen(true); }}
+                                        // Changed: Navigate directly to check-in page instead of opening scanner
+                                        onClick={() => { if (isAvailable) navigate(`/checkin/${act.ActivityID}`); }}
                                         className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col gap-2 transition-all ${isAvailable ? 'cursor-pointer hover:shadow-md active:scale-95 border-l-4 border-l-blue-500' : 'opacity-60 cursor-not-allowed grayscale border-l-4 border-l-gray-300'}`}
                                     >
                                         {/* Status Badge */}
@@ -286,7 +287,7 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
                                         {isAvailable && (
                                             <div className="flex justify-between items-center pt-2 border-t border-gray-50 mt-1">
                                                 <span className="text-[10px] text-blue-600 font-bold flex items-center">
-                                                    <ScanLine className="w-3 h-3 mr-1" /> แตะเพื่อสแกนเช็คอิน
+                                                    <MousePointerClick className="w-3 h-3 mr-1" /> แตะเพื่อเช็คอิน (GPS)
                                                 </span>
                                                 {act.is_nearby && <span className="text-[10px] text-green-500 bg-green-50 px-2 py-0.5 rounded-full">ในพื้นที่</span>}
                                             </div>
