@@ -248,8 +248,8 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
                                 return (
                                     <div 
                                         key={act.ActivityID}
-                                        // Changed: Navigate directly to check-in page instead of opening scanner
-                                        onClick={() => { if (isAvailable) navigate(`/checkin/${act.ActivityID}`); }}
+                                        // Changed: Clicking card now opens scanner to enforce Scan as primary, while still allowing access
+                                        onClick={() => { if (isAvailable) setIsScannerOpen(true); }}
                                         className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col gap-2 transition-all ${isAvailable ? 'cursor-pointer hover:shadow-md active:scale-95 border-l-4 border-l-blue-500' : 'opacity-60 cursor-not-allowed grayscale border-l-4 border-l-gray-300'}`}
                                     >
                                         {/* Status Badge */}
@@ -287,7 +287,7 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
                                         {isAvailable && (
                                             <div className="flex justify-between items-center pt-2 border-t border-gray-50 mt-1">
                                                 <span className="text-[10px] text-blue-600 font-bold flex items-center">
-                                                    <MousePointerClick className="w-3 h-3 mr-1" /> แตะเพื่อเช็คอิน (GPS)
+                                                    <ScanLine className="w-3 h-3 mr-1" /> แตะเพื่อสแกน QR Code
                                                 </span>
                                                 {act.is_nearby && <span className="text-[10px] text-green-500 bg-green-50 px-2 py-0.5 rounded-full">ในพื้นที่</span>}
                                             </div>
