@@ -2,10 +2,11 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppData, User, CheckInActivity } from '../types';
-import { ArrowLeft, Calendar, MapPin, Users, Clock, PlayCircle, AlertCircle, Info, Activity, Edit2, X, Save, Upload, Loader2, Camera, Navigation, RefreshCw, Timer } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Users, Clock, PlayCircle, AlertCircle, Info, Activity, Edit2, X, Save, Upload, Loader2, Camera, Navigation, RefreshCw, Timer, ScanLine } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { saveActivity, uploadImage } from '../services/api';
 import { resizeImage } from '../services/utils';
+import QRScannerModal from './QRScannerModal';
 
 interface ActivityDetailViewProps {
   data: AppData;
@@ -31,6 +32,9 @@ const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ data, user, onD
 
   // State for Countdown
   const [timeLeft, setTimeLeft] = useState<{days: number, hours: number, minutes: number} | null>(null);
+
+  // State for Scanner
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   // Helper for safe date parsing
   const isValidDate = (d: any) => {
@@ -177,6 +181,24 @@ const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ data, user, onD
       }
   };
 
+  // --- Scan Handling ---
+  const handleScanResult = (code: string) => {
+      setIsScannerOpen(false);
+      let scannedId = code;
+      // Support scanning full URLs
+      if (code.includes('/checkin/')) {
+          const parts = code.split('/checkin/');
+          if (parts.length > 1) scannedId = parts[1].split('?')[0]; 
+      }
+
+      // Check if scanned ID matches current activity
+      if (activity && scannedId === activity.ActivityID) {
+          navigate(`/checkin/${activity.ActivityID}`);
+      } else {
+          alert(`QR Code ไม่ถูกต้อง (รหัสที่สแกน: ${scannedId} ไม่ตรงกับกิจกรรมนี้)`);
+      }
+  };
+
   if (!activity) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-500">
@@ -241,6 +263,12 @@ const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ data, user, onD
   return (
     <div className="space-y-6 animate-in fade-in duration-300 pb-20 max-w-5xl mx-auto relative">
         
+        <QRScannerModal 
+            isOpen={isScannerOpen} 
+            onClose={() => setIsScannerOpen(false)} 
+            onScan={handleScanResult} 
+        />
+
         {/* Navigation & Actions */}
         <div className="flex justify-between items-center">
             <button 
@@ -418,11 +446,11 @@ const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ data, user, onD
 
                     {canCheckIn ? (
                         <button 
-                            onClick={() => navigate(`/checkin/${activity.ActivityID}`)}
+                            onClick={() => setIsScannerOpen(true)}
                             className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-200 transition-all flex items-center justify-center group active:scale-95"
                         >
-                            <PlayCircle className="w-6 h-6 mr-2 group-hover:scale-110 transition-transform" />
-                            เริ่มเช็คอิน (Check-in Now)
+                            <ScanLine className="w-6 h-6 mr-2 group-hover:scale-110 transition-transform" />
+                            สแกน QR เพื่อเช็คอิน
                         </button>
                     ) : (
                         <div className="w-full py-4 bg-gray-100 text-gray-400 rounded-xl font-bold text-center border-2 border-dashed border-gray-200 cursor-not-allowed flex flex-col items-center justify-center">
@@ -432,7 +460,7 @@ const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ data, user, onD
                     )}
 
                     <div className="mt-4 text-xs text-gray-400 text-center">
-                        * การเช็คอินต้องอยู่ในพื้นที่จัดงานเท่านั้น
+                        * ต้องสแกน QR Code หน้างานเท่านั้น
                     </div>
                 </div>
 
