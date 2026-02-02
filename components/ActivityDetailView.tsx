@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppData, User, CheckInActivity } from '../types';
-import { ArrowLeft, Calendar, MapPin, Users, Clock, PlayCircle, AlertCircle, Info, Activity, Edit2, X, Save, Upload, Loader2, Camera, Navigation, RefreshCw, Timer, ScanLine } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Users, Clock, PlayCircle, AlertCircle, Info, Activity, Edit2, X, Save, Upload, Loader2, Camera, Navigation, RefreshCw, Timer, ScanLine, LogIn } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { saveActivity, uploadImage } from '../services/api';
 import { resizeImage } from '../services/utils';
@@ -445,13 +445,23 @@ const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ data, user, onD
                     )}
 
                     {canCheckIn ? (
-                        <button 
-                            onClick={() => setIsScannerOpen(true)}
-                            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-200 transition-all flex items-center justify-center group active:scale-95"
-                        >
-                            <ScanLine className="w-6 h-6 mr-2 group-hover:scale-110 transition-transform" />
-                            สแกน QR เพื่อเช็คอิน
-                        </button>
+                        user ? (
+                            <button 
+                                onClick={() => setIsScannerOpen(true)}
+                                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-200 transition-all flex items-center justify-center group active:scale-95"
+                            >
+                                <ScanLine className="w-6 h-6 mr-2 group-hover:scale-110 transition-transform" />
+                                สแกน QR เพื่อเช็คอิน
+                            </button>
+                        ) : (
+                            <button 
+                                onClick={() => navigate('/login')}
+                                className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center justify-center group active:scale-95"
+                            >
+                                <LogIn className="w-6 h-6 mr-2" />
+                                เข้าสู่ระบบเพื่อเช็คอิน
+                            </button>
+                        )
                     ) : (
                         <div className="w-full py-4 bg-gray-100 text-gray-400 rounded-xl font-bold text-center border-2 border-dashed border-gray-200 cursor-not-allowed flex flex-col items-center justify-center">
                             <span>ไม่สามารถเช็คอินได้</span>
