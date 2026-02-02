@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User } from '../../types';
-import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock } from 'lucide-react';
-import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers } from '../../services/api';
+import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog } from '../../types';
+import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift } from 'lucide-react';
+import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions } from '../../services/api';
 import { resizeImage } from '../../services/utils';
 import SearchableSelect from '../SearchableSelect';
 
@@ -21,8 +21,11 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     // Stats State
     const [allLogs, setAllLogs] = useState<CheckInLog[]>([]);
     const [allUsers, setAllUsers] = useState<User[]>([]);
+    const [allRedemptions, setAllRedemptions] = useState<RedemptionLog[]>([]);
     const [isLoadingStats, setIsLoadingStats] = useState(false);
     const [viewingStatsFor, setViewingStatsFor] = useState<PassportMission | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [savingRedemption, setSavingRedemption] = useState<string | null>(null); // UserId being redeemed
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -39,12 +42,14 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         const fetchStats = async () => {
             setIsLoadingStats(true);
             try {
-                const [logsRes, usersRes] = await Promise.all([
+                const [logsRes, usersRes, redemptionsRes] = await Promise.all([
                     getCheckInLogs(),
-                    getAllUsers()
+                    getAllUsers(),
+                    getRedemptions()
                 ]);
                 setAllLogs(logsRes || []);
                 setAllUsers(usersRes || []);
+                setAllRedemptions(redemptionsRes || []);
             } catch (e) {
                 console.error("Failed to load stats data");
             } finally {
@@ -131,6 +136,24 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
             setAlertMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการบันทึก' });
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleRedeem = async (userId: string, missionId: string) => {
+        if (!confirm('ยืนยันว่าผู้ใช้นี้ได้รับรางวัลแล้ว?')) return;
+        setSavingRedemption(userId);
+        try {
+            const res = await redeemReward(userId, missionId);
+            if (res.status === 'success') {
+                // Update local state optimistically
+                setAllRedemptions(prev => [...prev, { UserID: userId, MissionID: missionId, Timestamp: new Date().toISOString() }]);
+            } else {
+                alert('บันทึกไม่สำเร็จ: ' + res.message);
+            }
+        } catch (e) {
+            alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+        } finally {
+            setSavingRedemption(null);
         }
     };
 
@@ -261,14 +284,19 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     };
 
     const downloadStatsCSV = (userList: any[], missionTitle: string) => {
-        const headers = ['UserID', 'Name', 'School', 'CompletedTime', 'Reward'];
-        const rows = userList.map(u => [
-            u.userId,
-            `"${u.user?.Name || u.userId}"`,
-            `"${u.user?.SchoolID || '-'}"`,
-            `"${new Date(u.timestamp).toLocaleString('th-TH')}"`,
-            `"${viewingStatsFor?.rewardLabel}"`
-        ]);
+        const headers = ['UserID', 'Name', 'School', 'CompletedTime', 'Reward', 'RedeemedStatus', 'RedeemedTime'];
+        const rows = userList.map(u => {
+            const redemption = allRedemptions.find(r => r.UserID === u.userId && r.MissionID === viewingStatsFor?.id);
+            return [
+                u.userId,
+                `"${u.user?.Name || u.userId}"`,
+                `"${u.user?.SchoolID || '-'}"`,
+                `"${new Date(u.timestamp).toLocaleString('th-TH')}"`,
+                `"${viewingStatsFor?.rewardLabel}"`,
+                redemption ? 'Received' : 'Pending',
+                redemption ? `"${new Date(redemption.Timestamp).toLocaleString('th-TH')}"` : ''
+            ];
+        });
         
         const csvContent = "\uFEFF" + [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -293,10 +321,20 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         const completedUsers = getCompletedUsers(viewingStatsFor);
         const themeColor = viewingStatsFor.rewardColor || '#F59E0B';
         
+        // Filter users based on search
+        const filteredUsers = completedUsers.filter(u => {
+            const term = searchQuery.toLowerCase();
+            return (
+                (u.user?.Name || '').toLowerCase().includes(term) ||
+                (u.userId || '').toLowerCase().includes(term) ||
+                (u.user?.SchoolID || '').toLowerCase().includes(term)
+            );
+        });
+
         return (
             <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-                <div className="bg-white rounded-2xl w-full max-w-3xl flex flex-col max-h-[85vh] shadow-2xl overflow-hidden">
-                    <div className="p-5 border-b border-gray-100 flex justify-between items-center text-white" style={{ backgroundColor: themeColor }}>
+                <div className="bg-white rounded-2xl w-full max-w-4xl flex flex-col max-h-[85vh] shadow-2xl overflow-hidden">
+                    <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 text-white" style={{ backgroundColor: themeColor }}>
                         <div>
                             <h3 className="font-bold text-lg flex items-center">
                                 <Award className="w-5 h-5 mr-2 text-white/80"/>
@@ -306,56 +344,91 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                 {viewingStatsFor.title} • {viewingStatsFor.rewardLabel}
                             </p>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 w-full sm:w-auto">
+                            <div className="relative flex-1 sm:w-64">
+                                <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
+                                <input 
+                                    type="text" 
+                                    className="w-full pl-9 pr-3 py-2 bg-white/90 border-0 rounded-lg text-sm text-gray-800 placeholder-gray-500 focus:ring-2 focus:ring-white/50"
+                                    placeholder="ค้นหาชื่อ, รหัส, โรงเรียน..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
                             <button 
                                 onClick={() => downloadStatsCSV(completedUsers, viewingStatsFor.title)}
-                                className="px-3 py-1.5 bg-white/20 text-white rounded-lg text-xs font-bold hover:bg-white/30 flex items-center backdrop-blur-sm"
+                                className="px-3 py-2 bg-white/20 text-white rounded-lg text-xs font-bold hover:bg-white/30 flex items-center backdrop-blur-sm"
                             >
                                 <Download className="w-4 h-4 mr-1"/> CSV
                             </button>
-                            <button onClick={() => setViewingStatsFor(null)} className="p-1.5 hover:bg-white/20 rounded-full text-white/80 hover:text-white transition-colors">
+                            <button onClick={() => { setViewingStatsFor(null); setSearchQuery(''); }} className="p-2 hover:bg-white/20 rounded-full text-white/80 hover:text-white transition-colors">
                                 <X className="w-5 h-5"/>
                             </button>
                         </div>
                     </div>
                     
-                    <div className="flex-1 overflow-y-auto p-0">
+                    <div className="flex-1 overflow-y-auto p-0 bg-white">
                         <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50 sticky top-0">
+                            <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ชื่อ-นามสกุล</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">โรงเรียน / สังกัด</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">เวลาที่สำเร็จ</th>
+                                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">สถานะการรับของ</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {completedUsers.map((u, idx) => (
-                                    <tr key={idx} className="hover:bg-gray-50">
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm font-bold text-gray-900">{u.user?.Name || u.userId}</div>
-                                            <div className="text-xs text-gray-500">ID: {u.userId}</div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="text-sm text-gray-900 flex items-center">
-                                                <SchoolIcon className="w-3 h-3 mr-1 text-gray-400"/>
-                                                {u.user?.SchoolID || '-'}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                                            <div className="text-sm text-gray-500 flex items-center justify-end">
-                                                {new Date(u.timestamp).toLocaleTimeString('th-TH')}
-                                                <Clock className="w-3 h-3 ml-1 text-gray-300"/>
-                                            </div>
-                                            <div className="text-[10px] text-gray-400">
-                                                {new Date(u.timestamp).toLocaleDateString('th-TH')}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {completedUsers.length === 0 && (
+                                {filteredUsers.map((u, idx) => {
+                                    const redemption = allRedemptions.find(r => r.UserID === u.userId && r.MissionID === viewingStatsFor.id);
+                                    return (
+                                        <tr key={idx} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <div className="text-sm font-bold text-gray-900">{u.user?.Name || u.userId}</div>
+                                                <div className="text-xs text-gray-500">ID: {u.userId}</div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="text-sm text-gray-900 flex items-center">
+                                                    <SchoolIcon className="w-3 h-3 mr-1 text-gray-400"/>
+                                                    {u.user?.SchoolID || '-'}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                <div className="text-sm text-gray-500 flex items-center justify-end">
+                                                    {new Date(u.timestamp).toLocaleTimeString('th-TH')}
+                                                    <Clock className="w-3 h-3 ml-1 text-gray-300"/>
+                                                </div>
+                                                <div className="text-[10px] text-gray-400">
+                                                    {new Date(u.timestamp).toLocaleDateString('th-TH')}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                {redemption ? (
+                                                    <div className="inline-flex flex-col items-center">
+                                                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold flex items-center mb-1">
+                                                            <Check className="w-3 h-3 mr-1" /> รับแล้ว
+                                                        </span>
+                                                        <span className="text-[10px] text-gray-400">
+                                                            {new Date(redemption.Timestamp).toLocaleString('th-TH')}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <button 
+                                                        onClick={() => handleRedeem(u.userId, viewingStatsFor.id)}
+                                                        disabled={savingRedemption === u.userId}
+                                                        className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 flex items-center justify-center mx-auto shadow-sm disabled:opacity-50"
+                                                    >
+                                                        {savingRedemption === u.userId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gift className="w-3 h-3 mr-1" />}
+                                                        กดรับของ
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {filteredUsers.length === 0 && (
                                     <tr>
-                                        <td colSpan={3} className="px-6 py-10 text-center text-gray-400">
-                                            ยังไม่มีผู้ทำภารกิจสำเร็จ
+                                        <td colSpan={4} className="px-6 py-10 text-center text-gray-400">
+                                            {searchQuery ? 'ไม่พบรายชื่อที่ค้นหา' : 'ยังไม่มีผู้ทำภารกิจสำเร็จ'}
                                         </td>
                                     </tr>
                                 )}
