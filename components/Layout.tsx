@@ -5,7 +5,7 @@ import { User, AppData, AppConfig } from '../types';
 import { 
     LayoutDashboard, MapPin, Users, Trophy, Edit3, Award, Printer, 
     FileBadge, IdCard, Gavel, Megaphone, School, UserCog, LogOut, 
-    Menu, X, UserCircle, LogIn, ChevronRight, ChevronLeft, Settings, BrainCircuit, MonitorPlay, GraduationCap, Map, ScanLine, QrCode, ShieldCheck
+    Menu, X, UserCircle, LogIn, ChevronRight, ChevronLeft, Settings, BrainCircuit, MonitorPlay, GraduationCap, Map, ScanLine, QrCode, ShieldCheck, BarChart3
 } from 'lucide-react';
 import { logoutLiff } from '../services/liff';
 import QRScannerModal from './QRScannerModal';
@@ -39,6 +39,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
 
   const allMenuItems = [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/home', alwaysVisible: true },
+      { id: 'summary', label: 'สถิติภาพรวม (Analytics)', icon: BarChart3, path: '/summary', configKey: 'menu_summary' },
       { id: 'passport', label: 'Digital Passport', icon: ShieldCheck, path: '/passport', configKey: 'menu_passport' },
       { id: 'live', label: 'Live Score', icon: MonitorPlay, path: '/live', configKey: 'menu_live' },
       { id: 'teams', label: 'ทีมแข่งขัน', icon: Users, path: '/teams', configKey: 'menu_teams' },
@@ -55,7 +56,6 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
       { id: 'schools', label: 'โรงเรียน', icon: School, path: '/schools', configKey: 'menu_schools' },
       // Strict Admin Only for Users Menu
       { id: 'users', label: 'ผู้ใช้งาน', icon: UserCog, path: '/users', configKey: 'menu_users', strictAdmin: true },
-      { id: 'summary', label: 'Smart Summary', icon: BrainCircuit, path: '/summary', configKey: 'menu_summary', restricted: true },
       { id: 'checkin_mgr', label: 'จัดการจุดเช็คอิน', icon: Map, path: '/checkin-dashboard', adminOnly: true, configKey: 'menu_checkin_mgr' },
       { id: 'checkin', label: 'รายการเช็คอิน', icon: MapPin, path: '/checkin-dashboard', mobileOnly: true }, 
       { id: 'settings', label: 'ตั้งค่าระบบ', icon: Settings, path: '/settings', adminOnly: true }
@@ -74,6 +74,12 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
           if (item.allowedRoles && !item.allowedRoles.includes(role)) return false;
           
           if (item.adminOnly && !isAdminOrArea) return false;
+          
+          // Restricted means only logged-in staff/admin usually, but here we check strict Admin/Area above.
+          // If restricted is true, regular users shouldn't see it even if config is true
+          // @ts-ignore
+          if (item.restricted && !isAdminOrArea && role !== 'school_admin' && role !== 'score' && role !== 'group_admin') return false;
+
           if (item.configKey && config[item.configKey] === false) return false;
           return true;
       });
@@ -83,7 +89,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
   // 4 items: 2 Left (Home, List), 2 Right (Passport, Menu) + 1 Floating Center (Scan)
   const mobileNavLeft = [
       { id: 'home', label: 'หน้าแรก', icon: LayoutDashboard, path: '/home' },
-      { id: 'checkin', label: 'รายการ', icon: MapPin, path: '/checkin-dashboard' }
+      { id: 'summary', label: 'สถิติ', icon: BarChart3, path: '/summary' }
   ];
   
   const mobileNavRight = [
