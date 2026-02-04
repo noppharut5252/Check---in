@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { logoutLiff } from '../services/liff';
 import QRScannerModal from './QRScannerModal';
+import ConfirmationModal from './ConfirmationModal';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -25,6 +26,10 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
   
   // Global Scanner State
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+
+  // Logout State
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const role = userProfile?.level?.toLowerCase() || 'guest';
   const isAdminOrArea = role === 'admin' || role === 'area';
@@ -91,7 +96,15 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
       setIsSidebarOpen(false);
   };
 
-  const handleLogout = () => {
+  const handleLogoutClick = () => {
+      setShowLogoutConfirm(true);
+  };
+
+  const executeLogout = async () => {
+      setIsLoggingOut(true);
+      // Simulate delay for smooth transition UI
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
       localStorage.removeItem('comp_user');
       logoutLiff();
       window.location.reload();
@@ -123,6 +136,19 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
             isOpen={isScannerOpen} 
             onClose={() => setIsScannerOpen(false)} 
             onScan={handleScanResult} 
+        />
+
+        {/* Logout Confirmation Modal */}
+        <ConfirmationModal 
+            isOpen={showLogoutConfirm}
+            title="ยืนยันการออกจากระบบ"
+            description="คุณต้องการออกจากระบบใช่หรือไม่? หากยืนยันคุณจะต้องเข้าสู่ระบบใหม่เพื่อใช้งานครั้งถัดไป"
+            confirmLabel="ออกจากระบบ"
+            confirmColor="red"
+            onConfirm={executeLogout}
+            onCancel={() => setShowLogoutConfirm(false)}
+            isLoading={isLoggingOut}
+            actionType="delete" // Uses the red icon style
         />
 
         {/* --- Sidebar (Desktop) --- */}
@@ -196,7 +222,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                                         <p className="text-sm font-bold text-gray-800 truncate">{userProfile.Name || userProfile.displayName}</p>
                                         <p className="text-xs text-gray-500 truncate capitalize">{userProfile.Role || userProfile.level}</p>
                                     </div>
-                                    <button onClick={handleLogout} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                    <button onClick={handleLogoutClick} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                                         <LogOut className="w-4 h-4" />
                                     </button>
                                 </>
@@ -246,7 +272,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                     
                     <div className="p-4 bg-gray-50 border-t border-gray-100 pb-safe">
                         {isLoggedIn ? (
-                            <button onClick={handleLogout} className="w-full py-3 bg-white border border-red-200 text-red-600 rounded-xl text-sm font-bold flex items-center justify-center shadow-sm active:scale-95 transition-transform">
+                            <button onClick={handleLogoutClick} className="w-full py-3 bg-white border border-red-200 text-red-600 rounded-xl text-sm font-bold flex items-center justify-center shadow-sm active:scale-95 transition-transform">
                                 <LogOut className="w-4 h-4 mr-2" /> ออกจากระบบ
                             </button>
                         ) : (
@@ -275,7 +301,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                 </div>
                 {isLoggedIn ? (
                     <div className="flex items-center gap-3">
-                        <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 p-1">
+                        <button onClick={handleLogoutClick} className="text-gray-400 hover:text-red-500 p-1">
                             <LogOut className="w-5 h-5" />
                         </button>
                         <div onClick={() => handleNav('/profile')} className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden border border-gray-100 shadow-sm cursor-pointer">
