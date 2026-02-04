@@ -192,14 +192,17 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
     const getMissionStatus = (mission: PassportMission) => {
         if (!mission) return { progress: 0, total: 0, isComplete: false, reqStatus: [], completionTime: null };
 
-        const missionDate = mission.date;
+        // Determine relevant logs based on scope
+        let targetLogs = userLogs;
         
-        // 1. Logs for "Count" Requirements (Must be on the specific date)
-        const dailyLogs = userLogs.filter(log => {
-            if (!log.Timestamp) return false;
-            // Simple string check for same day (assuming ISO format YYYY-MM-DD...)
-            return log.Timestamp.startsWith(missionDate); 
-        });
+        if (mission.dateScope !== 'all_time') {
+            // Default behavior: Check specific date
+            const missionDate = mission.date;
+            targetLogs = userLogs.filter(log => {
+                if (!log.Timestamp) return false;
+                return log.Timestamp.startsWith(missionDate); 
+            });
+        }
 
         // 2. Requirements Logic
         let completedReqs = 0;
@@ -211,29 +214,26 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
             let latestLogTime = 0;
 
             if (req.type === 'specific_activity') {
-                // BUG FIX: For specific activity, check ALL logs (Global History), not just today's
-                const found = userLogs.find(l => String(l.ActivityID).trim() === String(req.targetId).trim());
+                // Check if Activity ID exists in target logs
+                const found = targetLogs.find(l => String(l.ActivityID).trim() === String(req.targetId).trim());
                 if (found) { 
                     achieved = true; 
                     currentVal = 1; 
                     latestLogTime = new Date(found.Timestamp).getTime();
                 }
             } else if (req.type === 'total_count') {
-                // For counters, strictly check DAILY logs
-                currentVal = dailyLogs.length;
+                currentVal = targetLogs.length;
                 if (currentVal >= req.targetValue) {
                     achieved = true;
-                    // Find the Nth log that satisfied the condition
-                    if (dailyLogs.length > 0) {
-                        const sorted = dailyLogs.sort((a,b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
-                        // Use the timestamp of the last required check-in
+                    // Find timestamp
+                    if (targetLogs.length > 0) {
+                        const sorted = [...targetLogs].sort((a,b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
                         const targetLog = sorted[Math.min(sorted.length - 1, req.targetValue - 1)]; 
                         latestLogTime = new Date(targetLog.Timestamp).getTime();
                     }
                 }
             } else if (req.type === 'category_count') {
-                // Category counts also strictly daily
-                const catLogs = dailyLogs.filter(l => {
+                const catLogs = targetLogs.filter(l => {
                     const act = data.activities.find(a => String(a.id) === String(l.ActivityID));
                     return act?.category === req.targetId;
                 });
@@ -333,7 +333,7 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                 <div className="relative z-10 flex justify-between items-start">
                     <div>
                         <h1 className="text-2xl font-bold tracking-wider text-[#ffecb3] drop-shadow-md">DIGITAL PASSPORT</h1>
-                        <p className="text-[#c5cae9] text-sm mt-1 uppercase tracking-widest">Official Record</p>
+                        <p className="text--[#c5cae9] text-sm mt-1 uppercase tracking-widest">Official Record</p>
                     </div>
                     <button 
                         onClick={handleRefresh}
@@ -392,7 +392,8 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                         {mission.title}
                                     </h3>
                                     <p className="text-xs text-gray-500 flex items-center mt-1">
-                                        <Calendar className="w-3 h-3 mr-1" /> {new Date(mission.date).toLocaleDateString('th-TH', { dateStyle: 'long' })}
+                                        <Calendar className="w-3 h-3 mr-1" /> 
+                                        {mission.dateScope === 'all_time' ? 'สะสมยอดรวม (All Time)' : new Date(mission.date).toLocaleDateString('th-TH', { dateStyle: 'long' })}
                                     </p>
                                 </div>
                                 <div className="text-right">
