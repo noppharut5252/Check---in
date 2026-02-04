@@ -229,7 +229,7 @@ export const shareIdCard = async (
     return shareContent(flexMessage, `Digital ID: ${memberName}`, `${memberName} - ${teamName}\n${appUrl}`);
 }
 
-// 2. Share Check-in Activity (Updated with Floor/Room support)
+// 2. Share Check-in Activity
 export const shareCheckInActivity = async (
     activityName: string,
     locationName: string,
@@ -241,12 +241,10 @@ export const shareCheckInActivity = async (
 ): Promise<{ success: boolean; method: 'line' | 'share' | 'copy' | 'error' }> => {
     const appUrl = `${window.location.origin}${window.location.pathname}#/checkin/${activityId}`;
     
-    // Construct robust details for fallback text
     let detailText = `สถานที่: ${locationName || 'ไม่ระบุ'}`;
     if (floor || room) detailText += ` (${floor ? 'ชั้น ' + floor : ''} ${room ? 'ห้อง ' + room : ''})`;
     const textSummary = `📍 เช็คอินเข้าร่วมกิจกรรม: ${activityName}\n${detailText}\nเวลา: ${timeText}\n\nกดลิงก์เพื่อเช็คอิน: ${appUrl}`;
 
-    // Build contents array dynamically to handle optional fields
     const bodyContents: any[] = [
         {
             "type": "box",
@@ -259,7 +257,6 @@ export const shareCheckInActivity = async (
         }
     ];
 
-    // Add Floor/Room row if data exists
     if (floor || room) {
         const floorText = floor ? `ชั้น ${floor}` : '';
         const roomText = room ? `ห้อง ${room}` : '';
@@ -278,7 +275,6 @@ export const shareCheckInActivity = async (
         }
     }
 
-    // Add Time row
     bodyContents.push({
         "type": "box",
         "layout": "baseline",
@@ -339,7 +335,7 @@ export const shareCheckInActivity = async (
     return shareContent(flexMessage, `Check-in: ${activityName}`, textSummary);
 };
 
-// 3. Share Score Result (Individual/Team Result)
+// 3. Share Score Result
 export const shareScoreResult = async (
     teamName: string, 
     schoolName: string, 
@@ -432,8 +428,9 @@ export const shareScoreResult = async (
     return shareContent(flexMessage, `ผลการแข่งขัน: ${teamName}`, `ผลการแข่งขัน ${activityName}\nทีม: ${teamName}\nคะแนน: ${score} (${medalText})\nดูผล: ${resultUrl}`);
 };
 
-// 4. Share Top 3 Result (Leaderboard)
+// 4. Share Top 3 Result
 export const shareTop3Result = async (activityName: string, winners: any[], activityId?: string) => {
+    // ... (Existing Implementation from previous snippets if available, else standard)
     const rows = winners.map((w, idx) => {
         let rankColor = "#333333";
         if (idx === 0) rankColor = "#FFD700";
@@ -487,7 +484,7 @@ export const shareTop3Result = async (activityName: string, winners: any[], acti
     };
 
     // @ts-ignore
-    return shareContent(flexMessage, `สรุปผล: ${activityName}`, `สรุปผลการแข่งขัน ${activityName}\n1. ${winners[0]?.name} (${winners[0]?.score})\n2. ${winners[1]?.name} (${winners[1]?.score})\n3. ${winners[2]?.name} (${winners[2]?.score})`);
+    return shareContent(flexMessage, `สรุปผล: ${activityName}`, `สรุปผลการแข่งขัน ${activityName}`);
 };
 
 // 5. Share Venue Location
@@ -654,4 +651,99 @@ export const shareAnnouncement = async (
     };
     // @ts-ignore
     return shareContent(flexMessage, `ประกาศ: ${title}`, `${title}\n${content}\nอ่านต่อ: ${link || appUrl}`);
+};
+
+// 8. Share Passport Achievement (NEW)
+export const sharePassportAchievement = async (
+    user: any,
+    levelTitle: string,
+    completedCount: number,
+    totalCount: number,
+    nextTitle: string
+) => {
+    const percentage = Math.round((completedCount / totalCount) * 100);
+    const appUrl = `${window.location.origin}${window.location.pathname}#/passport`;
+
+    const flexMessage = {
+        type: "flex",
+        altText: `Achievement: ${levelTitle}`,
+        contents: {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+              "type": "box",
+              "layout": "vertical",
+              "contents": [
+                { "type": "text", "text": "PASSPORT ACHIEVEMENT", "color": "#FFD700", "weight": "bold", "size": "xxs", "align": "center", "letterSpacing": "1px" },
+                { "type": "text", "text": levelTitle, "color": "#ffffff", "weight": "bold", "size": "xl", "align": "center", "margin": "sm", "wrap": true }
+              ],
+              "backgroundColor": "#1a237e",
+              "paddingTop": "20px",
+              "paddingBottom": "40px"
+            },
+            "body": {
+              "type": "box",
+              "layout": "vertical",
+              "contents": [
+                {
+                  "type": "box",
+                  "layout": "vertical",
+                  "contents": [
+                    { 
+                        "type": "image", 
+                        "url": user.PictureUrl || "https://cdn-icons-png.flaticon.com/512/3135/3135768.png", 
+                        "size": "full", "aspectMode": "cover" 
+                    }
+                  ],
+                  "width": "80px", "height": "80px", "cornerRadius": "100px",
+                  "borderColor": "#ffffff", "borderWidth": "4px",
+                  "position": "absolute", "top": "-40px", "alignSelf": "center"
+                },
+                { "type": "spacer", "size": "xl" },
+                { "type": "text", "text": user.Name || 'Explorer', "weight": "bold", "size": "md", "align": "center", "color": "#333333", "margin": "md" },
+                { "type": "text", "text": `${completedCount} / ${totalCount} MISSIONS`, "size": "xs", "color": "#888888", "align": "center", "margin": "xs", "weight": "bold" },
+                
+                // Progress Bar Simulation using Box
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "width": `${percentage}%`,
+                            "backgroundColor": "#10B981",
+                            "height": "6px",
+                            "cornerRadius": "3px"
+                        }
+                    ],
+                    "backgroundColor": "#E5E7EB",
+                    "height": "6px",
+                    "cornerRadius": "3px",
+                    "margin": "md",
+                    "width": "80%",
+                    "alignSelf": "center"
+                },
+                
+                { "type": "text", "text": nextTitle ? `Next: ${nextTitle}` : "MAX LEVEL!", "size": "xxs", "color": "#1a237e", "align": "center", "margin": "sm", "style": "italic" }
+              ],
+              "backgroundColor": "#ffffff",
+              "paddingTop": "0px"
+            },
+            "footer": {
+              "type": "box",
+              "layout": "vertical",
+              "contents": [
+                {
+                  "type": "button",
+                  "action": { "type": "uri", "label": "ดูสมุดสะสม", "uri": appUrl },
+                  "style": "secondary"
+                }
+              ]
+            }
+          }
+    };
+
+    // @ts-ignore
+    return shareContent(flexMessage, `Achievement: ${levelTitle}`, `ฉันได้รับฉายา "${levelTitle}" จากกิจกรรมโรงเรียนสุจริต! (สะสมครบ ${completedCount} ภารกิจ)\n${appUrl}`);
 };
