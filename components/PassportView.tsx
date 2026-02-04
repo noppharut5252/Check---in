@@ -70,6 +70,9 @@ const RedemptionModal = ({ isOpen, onClose, mission, user }: { isOpen: boolean, 
 
     if (!isOpen) return null;
 
+    // Full name construction for better staff verification
+    const fullName = `${user.Prefix || ''} ${user.Name || ''} ${user.Surname || ''}`.trim();
+
     return (
         <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
             <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl relative animate-in zoom-in-95 flex flex-col">
@@ -111,15 +114,16 @@ const RedemptionModal = ({ isOpen, onClose, mission, user }: { isOpen: boolean, 
                         </div>
                     </div>
 
-                    {/* User Identity for Staff */}
+                    {/* User Identity for Staff (Enhanced) */}
                     <div className="w-full bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center gap-3 text-left">
-                        <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden shrink-0 border border-gray-300">
+                        <div className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden shrink-0 border border-gray-300">
                             <img src={user.PictureUrl || `https://ui-avatars.com/api/?name=${user.Name}`} className="w-full h-full object-cover" />
                         </div>
                         <div className="min-w-0">
                             <p className="text-xs text-gray-400 font-bold uppercase">Owner</p>
-                            <p className="text-sm font-bold text-gray-900 truncate">{user.Name}</p>
+                            <p className="text-sm font-bold text-gray-900 truncate">{fullName}</p>
                             <p className="text-xs text-gray-500 truncate">ID: {user.userid}</p>
+                            {user.Role && <p className="text-[10px] text-blue-500 font-bold uppercase mt-0.5">{user.Role}</p>}
                         </div>
                     </div>
 
@@ -417,10 +421,16 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                             {/* Mission Body */}
                             <div className="p-6 relative">
                                 {mission.description && (
-                                    <div className="mb-6 p-3 bg-white/60 rounded-xl border text-sm text-gray-600 leading-relaxed font-handwriting whitespace-pre-wrap shadow-sm" style={{ borderColor: cardColor + '30' }}>
+                                    <div className="mb-4 p-3 bg-white/60 rounded-xl border text-sm text-gray-600 leading-relaxed font-handwriting whitespace-pre-wrap shadow-sm" style={{ borderColor: cardColor + '30' }}>
                                         {mission.description}
                                     </div>
                                 )}
+
+                                {/* Reward Preview Badge - Always Visible */}
+                                <div className="mb-6 flex items-center gap-2 text-sm font-medium text-gray-700 bg-gray-50 p-2 rounded-lg border border-gray-200">
+                                     <Gift className="w-4 h-4 text-orange-500" />
+                                     <span>ของรางวัล: <span className="font-bold text-indigo-600">{mission.rewardLabel}</span></span>
+                                </div>
 
                                 {/* Condition Logic Badge */}
                                 {isOR && (
