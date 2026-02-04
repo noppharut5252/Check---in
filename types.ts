@@ -303,6 +303,7 @@ export interface PassportMission {
     rewardColor: string; // Hex color or class
     rewardLabel: string; // e.g. "Gold Stamp"
     stampImage?: string; // Optional custom stamp URL
+    dateScope?: 'specific_date' | 'all_time'; // Default: specific_date
 }
 
 export interface PassportConfig {
