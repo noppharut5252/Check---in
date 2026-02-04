@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppData, User, AppConfig } from '../types';
-import { Save, Loader2, Lock, Eye, EyeOff, LayoutDashboard, MonitorPlay, Users, MapPin, Trophy, Edit3, Award, Printer, FileBadge, IdCard, Gavel, Megaphone, School, UserCog, BrainCircuit, GraduationCap, Map, History, ShieldCheck } from 'lucide-react';
+import { Save, Loader2, Lock, Eye, EyeOff, LayoutDashboard, MonitorPlay, Users, MapPin, Trophy, Edit3, Award, Printer, FileBadge, IdCard, Gavel, Megaphone, School, UserCog, BrainCircuit, GraduationCap, Map, History, ShieldCheck, BarChart3 } from 'lucide-react';
 import { saveAppConfig } from '../services/api';
 
 interface SettingsViewProps {
@@ -63,6 +63,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ data, user, onDataUpdate })
   };
 
   const menuItems = [
+      { key: 'menu_summary', label: 'สถิติภาพรวม (Public Analytics)', icon: BarChart3 },
       { key: 'menu_passport', label: 'Digital Passport', icon: ShieldCheck },
       { key: 'menu_live', label: 'Live Score', icon: MonitorPlay },
       { key: 'menu_teams', label: 'ทีม (Teams)', icon: Users },
@@ -78,7 +79,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ data, user, onDataUpdate })
       { key: 'menu_announcements', label: 'ข่าว/คู่มือ (Announcements)', icon: Megaphone },
       { key: 'menu_schools', label: 'โรงเรียน (Schools)', icon: School },
       { key: 'menu_users', label: 'ผู้ใช้งาน (Users)', icon: UserCog },
-      { key: 'menu_summary', label: 'Smart Summary (AI)', icon: BrainCircuit },
       { key: 'menu_checkin_mgr', label: 'จัดการจุดเช็คอิน (Check-in Manager)', icon: Map },
       { key: 'menu_checkin_history', label: 'ประวัติการเช็คอิน (User History)', icon: History },
   ];
