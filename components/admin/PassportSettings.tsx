@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog } from '../../types';
 import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart } from 'lucide-react';
@@ -24,11 +25,12 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [allRedemptions, setAllRedemptions] = useState<RedemptionLog[]>([]);
     const [isLoadingStats, setIsLoadingStats] = useState(false);
+    const [isLoadingDashboard, setIsLoadingDashboard] = useState(false); // New Loading State
     const [isDataLoaded, setIsDataLoaded] = useState(false);
     
     // UI State
     const [viewingStatsFor, setViewingStatsFor] = useState<PassportMission | null>(null);
-    const [showDashboard, setShowDashboard] = useState(false); // New Dashboard State
+    const [showDashboard, setShowDashboard] = useState(false); 
     const [searchQuery, setSearchQuery] = useState('');
     const [savingRedemption, setSavingRedemption] = useState<string | null>(null); 
     
@@ -54,7 +56,9 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
     // Fetch Logs & Users
     const loadData = async () => {
+        // If data is already loaded, just return (unless forced)
         if (isDataLoaded) return;
+        
         setIsLoadingStats(true);
         try {
             const [logsRes, usersRes, redemptionsRes] = await Promise.all([
@@ -74,12 +78,22 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         }
     };
 
-    // Load data when opening stats, scanner, or dashboard
+    // Handler to open dashboard with loading feedback
+    const handleOpenDashboard = async () => {
+        if (!isDataLoaded) {
+            setIsLoadingDashboard(true);
+            await loadData();
+            setIsLoadingDashboard(false);
+        }
+        setShowDashboard(true);
+    };
+
+    // Load data when opening stats specific mission or scanner
     useEffect(() => {
-        if (viewingStatsFor || isScannerOpen || showDashboard) {
+        if ((viewingStatsFor || isScannerOpen) && !isDataLoaded) {
             loadData();
         }
-    }, [viewingStatsFor, isScannerOpen, showDashboard]);
+    }, [viewingStatsFor, isScannerOpen]);
 
     // --- Logic: Check Mission Completion ---
     const checkUserCompletion = (userId: string, mission: PassportMission) => {
@@ -464,7 +478,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         );
     };
 
-    // --- Render Stats Modal ---
+    // --- Render Stats Modal (Updated with Responsive List) ---
     const renderStatsModal = () => {
         if (!viewingStatsFor) return null;
         
@@ -474,6 +488,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
             const term = searchQuery.toLowerCase();
             return (
                 (u.user?.Name || '').toLowerCase().includes(term) ||
+                (u.user?.Surname || '').toLowerCase().includes(term) ||
                 (u.userId || '').toLowerCase().includes(term) ||
                 (u.user?.SchoolID || '').toLowerCase().includes(term)
             );
@@ -482,7 +497,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         return (
             <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
                 <div className="bg-white rounded-2xl w-full max-w-4xl flex flex-col max-h-[85vh] shadow-2xl overflow-hidden">
-                    <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 text-white" style={{ backgroundColor: themeColor }}>
+                    <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 text-white shrink-0" style={{ backgroundColor: themeColor }}>
                         <div>
                             <h3 className="font-bold text-lg flex items-center">
                                 <Award className="w-5 h-5 mr-2 text-white/80"/>
@@ -505,18 +520,61 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                             </div>
                             <button 
                                 onClick={() => downloadStatsCSV(completedUsers, viewingStatsFor.title)}
-                                className="px-3 py-2 bg-white/20 text-white rounded-lg text-xs font-bold hover:bg-white/30 flex items-center backdrop-blur-sm"
+                                className="px-3 py-2 bg-white/20 text-white rounded-lg text-xs font-bold hover:bg-white/30 flex items-center backdrop-blur-sm shrink-0"
                             >
                                 <Download className="w-4 h-4 mr-1"/> CSV
                             </button>
-                            <button onClick={() => { setViewingStatsFor(null); setSearchQuery(''); }} className="p-2 hover:bg-white/20 rounded-full text-white/80 hover:text-white transition-colors">
+                            <button onClick={() => { setViewingStatsFor(null); setSearchQuery(''); }} className="p-2 hover:bg-white/20 rounded-full text-white/80 hover:text-white transition-colors shrink-0">
                                 <X className="w-5 h-5"/>
                             </button>
                         </div>
                     </div>
                     
-                    <div className="flex-1 overflow-y-auto p-0 bg-white">
-                        <table className="min-w-full divide-y divide-gray-200">
+                    <div className="flex-1 overflow-y-auto p-0 bg-gray-50">
+                        {/* Mobile View (Cards) */}
+                        <div className="block md:hidden p-3 space-y-3">
+                            {filteredUsers.map((u, idx) => {
+                                const redemption = allRedemptions.find(r => r.UserID === u.userId && r.MissionID === viewingStatsFor.id);
+                                const displayName = u.user ? `${u.user.Name || ''} ${u.user.Surname || ''}`.trim() : u.userId;
+                                return (
+                                    <div key={idx} className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm flex flex-col gap-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden shrink-0 border border-gray-100">
+                                                <img src={u.user?.PictureUrl || `https://ui-avatars.com/api/?name=${u.user?.Name}`} className="w-full h-full object-cover" />
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-gray-900 text-sm line-clamp-1">{displayName}</div>
+                                                <div className="text-xs text-gray-500 font-mono">{u.userId}</div>
+                                            </div>
+                                        </div>
+                                        <div className="text-xs text-gray-600 grid grid-cols-2 gap-2 mt-1 bg-gray-50 p-2 rounded-lg">
+                                            <div className="flex items-center truncate"><SchoolIcon className="w-3 h-3 mr-1 text-gray-400 shrink-0"/> {u.user?.SchoolID || '-'}</div>
+                                            <div className="text-right flex items-center justify-end"><Clock className="w-3 h-3 mr-1 text-gray-400"/> {new Date(u.timestamp).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}</div>
+                                        </div>
+                                        <div className="pt-2 border-t border-gray-50 flex justify-center">
+                                            {redemption ? (
+                                                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold flex items-center w-full justify-center">
+                                                    <Check className="w-3 h-3 mr-1" /> รับแล้ว ({new Date(redemption.Timestamp).toLocaleTimeString('th-TH')})
+                                                </span>
+                                            ) : (
+                                                <button 
+                                                    onClick={() => handleRedeem(u.userId, viewingStatsFor.id)}
+                                                    disabled={savingRedemption === u.userId}
+                                                    className="w-full px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 flex items-center justify-center shadow-sm disabled:opacity-50 active:scale-95 transition-transform"
+                                                >
+                                                    {savingRedemption === u.userId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gift className="w-3 h-3 mr-1" />}
+                                                    กดรับของ
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {filteredUsers.length === 0 && <div className="text-center py-10 text-gray-400">ไม่พบรายชื่อ</div>}
+                        </div>
+
+                        {/* Desktop View (Table) */}
+                        <table className="hidden md:table min-w-full divide-y divide-gray-200 bg-white">
                             <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ชื่อ-นามสกุล</th>
@@ -528,6 +586,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {filteredUsers.map((u, idx) => {
                                     const redemption = allRedemptions.find(r => r.UserID === u.userId && r.MissionID === viewingStatsFor.id);
+                                    const displayName = u.user ? `${u.user.Name || ''} ${u.user.Surname || ''}`.trim() : u.userId;
                                     return (
                                         <tr key={idx} className="hover:bg-gray-50">
                                             <td className="px-6 py-4 whitespace-nowrap">
@@ -536,7 +595,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                                         <img src={u.user?.PictureUrl || `https://ui-avatars.com/api/?name=${u.user?.Name}`} className="w-full h-full object-cover" />
                                                     </div>
                                                     <div>
-                                                        <div className="text-sm font-bold text-gray-900">{u.user?.Name || u.userId}</div>
+                                                        <div className="text-sm font-bold text-gray-900">{displayName}</div>
                                                         <div className="text-xs text-gray-500">ID: {u.userId}</div>
                                                     </div>
                                                 </div>
@@ -721,11 +780,12 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <button 
-                        onClick={() => setShowDashboard(true)} 
-                        className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-lg font-bold flex items-center hover:bg-blue-100 border border-blue-200 transition-all active:scale-95"
+                        onClick={handleOpenDashboard} 
+                        disabled={isLoadingDashboard}
+                        className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-lg font-bold flex items-center hover:bg-blue-100 border border-blue-200 transition-all active:scale-95 disabled:opacity-70 disabled:scale-100"
                     >
-                        <BarChart3 className="w-5 h-5 mr-2" />
-                        ภาพรวม (Dashboard)
+                        {isLoadingDashboard ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <BarChart3 className="w-5 h-5 mr-2" />}
+                        {isLoadingDashboard ? 'กำลังโหลด...' : 'ภาพรวม (Dashboard)'}
                     </button>
                     <button 
                         onClick={() => setIsScannerOpen(true)} 
