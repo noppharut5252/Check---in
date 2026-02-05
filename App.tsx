@@ -68,6 +68,7 @@ const App: React.FC = () => {
   });
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingStep, setLoadingStep] = useState('กำลังเชื่อมต่อระบบ...'); // New state for progress text
   const [error, setError] = useState<string | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   const [initialRedirect, setInitialRedirect] = useState<string | null>(null);
@@ -102,6 +103,7 @@ const App: React.FC = () => {
       const initApp = async () => {
           setLoading(true);
           setError(null);
+          setLoadingStep('กำลังตรวจสอบการเชื่อมต่อ...');
 
           // 1. Aggressive Hash Capture (Critical for QR Scans)
           const currentHash = window.location.hash;
@@ -119,6 +121,7 @@ const App: React.FC = () => {
 
           try {
               // 2. Parallel Load: Data & Auth
+              setLoadingStep('กำลังดาวน์โหลดข้อมูลกิจกรรมและสถานที่...');
               const dataPromise = fetchData().catch(e => {
                   console.error("Data Load Error", e);
                   throw new Error("ไม่สามารถโหลดข้อมูลได้ กรุณาตรวจสอบอินเทอร์เน็ต");
@@ -163,8 +166,10 @@ const App: React.FC = () => {
 
                   // B. LIFF Init (if no local user)
                   try {
+                      setLoadingStep('กำลังตรวจสอบการเชื่อมต่อ LINE...');
                       const profile = await initLiff();
                       if (profile) {
+                          setLoadingStep('ตรวจสอบข้อมูลสมาชิก...');
                           const dbUser = await checkUserRegistration(profile.userId);
                           if (dbUser) {
                               // Existing User
@@ -201,11 +206,14 @@ const App: React.FC = () => {
 
               // Wait for essential promises
               const [dataRes, loadedUser] = await Promise.all([dataPromise, authPromise]);
+              
+              setLoadingStep('ประมวลผลข้อมูล...');
               if (dataRes) setData(dataRes);
               
               // 3. Finalize Navigation Logic
               const savedRedirect = getPendingRedirect();
               
+              setLoadingStep('กำลังจัดเตรียมหน้าจอ...');
               // Correct Logic: Check 'loadedUser' (immediate value) instead of 'user' (stale state)
               if (savedRedirect) {
                   if (loadedUser && isUserComplete(loadedUser)) {
@@ -216,7 +224,8 @@ const App: React.FC = () => {
                   }
               }
               
-              setLoading(false);
+              // Short delay to let user see "Ready" state
+              setTimeout(() => setLoading(false), 500);
 
           } catch (err: any) {
               console.error("App Init Error:", err);
@@ -277,18 +286,26 @@ const App: React.FC = () => {
   if (loading) {
       return (
           <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6 text-center animate-in fade-in">
-              <div className="flex flex-col items-center max-w-lg">
+              <div className="flex flex-col items-center max-w-lg w-full">
                 <img 
                     src="https://raw.githubusercontent.com/noppharut5252/Checkin/refs/heads/main/logo/logo.gif" 
                     alt="Loading..." 
-                    className="w-32 h-32 mb-6 object-contain"
+                    className="w-24 h-24 mb-6 object-contain"
                 />
                 <div className="flex items-center gap-2 text-gray-800 font-bold text-lg mb-2">
                     <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
                     <h3>กำลังโหลดข้อมูล...</h3>
                 </div>
-                <p className="text-gray-500 text-xs leading-relaxed">
-                    ระบบกำลังเตรียมความพร้อม...
+                
+                {/* Progress Step Indicator */}
+                <div className="w-full max-w-xs bg-white rounded-xl p-3 border border-blue-100 shadow-sm flex items-center justify-center min-h-[50px]">
+                    <p className="text-blue-600 text-sm font-medium animate-pulse transition-all duration-300">
+                        {loadingStep}
+                    </p>
+                </div>
+                
+                <p className="text-gray-400 text-xs mt-4">
+                    UprightSchool System v1.0.2
                 </p>
               </div>
           </div>
