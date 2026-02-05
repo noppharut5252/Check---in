@@ -514,10 +514,38 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
         {isAdmin && (
             <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard title="เช็คอินแล้ว" value={stats.totalCheckIns.toLocaleString()} icon={Users} colorClass="bg-green-500" description={`จากความจุ ${stats.totalCapacity}`} />
-                    <StatCard title="กิจกรรม Active" value={stats.activeActivities} icon={Activity} colorClass="bg-blue-500" description={`รวม ${stats.totalActivities} กิจกรรม`} />
-                    <StatCard title="Total Users" value={stats.totalUsers.toLocaleString()} icon={Users} colorClass="bg-purple-500" description="ผู้ใช้งานในระบบ" />
-                    <StatCard title="Participation" value={`${stats.participationRate}%`} icon={TrendingUp} colorClass="bg-orange-500" description="Engagement Rate" />
+                    <StatCard 
+                        title="เช็คอินแล้ว" 
+                        value={stats.totalCheckIns.toLocaleString()} 
+                        icon={Users} 
+                        colorClass="bg-green-500" 
+                        description={`จากความจุ ${stats.totalCapacity}`}
+                        loading={isRefreshing}
+                    />
+                    <StatCard 
+                        title="กิจกรรม Active" 
+                        value={stats.activeActivities} 
+                        icon={Activity} 
+                        colorClass="bg-blue-500" 
+                        description={`รวม ${stats.totalActivities} กิจกรรม`}
+                        loading={isRefreshing}
+                    />
+                    <StatCard 
+                        title="Total Users" 
+                        value={stats.totalUsers.toLocaleString()} 
+                        icon={Users} 
+                        colorClass="bg-purple-500" 
+                        description="ผู้ใช้งานในระบบ"
+                        loading={isRefreshing}
+                    />
+                    <StatCard 
+                        title="Participation" 
+                        value={`${stats.participationRate}%`} 
+                        icon={TrendingUp} 
+                        colorClass="bg-orange-500" 
+                        description="Engagement Rate"
+                        loading={isRefreshing}
+                    />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
