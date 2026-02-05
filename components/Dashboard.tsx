@@ -5,12 +5,13 @@ import {
     Users, MapPin, Clock, Activity, 
     BarChart3, TrendingUp, Search, PlayCircle, LogIn, ArrowRight,
     Megaphone, FileText, Calendar, Filter, Timer, ChevronLeft, ChevronRight,
-    Navigation, ImageIcon, X, Map as MapIcon, List, ScanLine, QrCode, CheckSquare, Sparkles, Building, Layers, Tag
+    Navigation, ImageIcon, X, Map as MapIcon, List, ScanLine, QrCode, CheckSquare, Sparkles, Building, Layers, Tag, RefreshCw
 } from 'lucide-react';
 import StatCard from './StatCard';
 import { useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, CartesianGrid } from 'recharts';
 import QRScannerModal from './QRScannerModal';
+import { getAllUsers, getCheckInLogs, fetchData } from '../services/api';
 
 interface DashboardProps {
   data: AppData;
@@ -226,9 +227,55 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
   // Scanner Modal (User View)
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
+  // New Data States for Admin Stats
+  const [localData, setLocalData] = useState<AppData>(data);
+  const [dashboardStats, setDashboardStats] = useState({
+      userCount: 0,
+      uniqueParticipants: 0
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   // Role Check
   const role = user?.level?.toLowerCase() || 'guest';
   const isAdmin = role === 'admin' || role === 'area' || role === 'group_admin';
+
+  // Sync props to state if props change (though we rely on local refresh mostly)
+  useEffect(() => {
+      setLocalData(data);
+  }, [data]);
+
+  // Initial fetch for user count if admin
+  useEffect(() => {
+      if (isAdmin) {
+          refreshStats();
+      }
+  }, [isAdmin]);
+
+  const refreshStats = async () => {
+      setIsRefreshing(true);
+      try {
+          // Parallel fetch
+          const [updatedData, users, logs] = await Promise.all([
+              fetchData(),
+              isAdmin ? getAllUsers() : Promise.resolve([]),
+              isAdmin ? getCheckInLogs() : Promise.resolve([])
+          ]);
+          
+          setLocalData(updatedData);
+          
+          if (isAdmin) {
+              const unique = new Set(logs.map(l => l.UserID)).size;
+              setDashboardStats({
+                  userCount: users.length,
+                  uniqueParticipants: unique
+              });
+          }
+      } catch(e) {
+          console.error(e);
+      } finally {
+          setIsRefreshing(false);
+      }
+  };
 
   useEffect(() => {
       setCurrentPage(1);
@@ -267,12 +314,16 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
 
   // --- Statistics (Admin Only) ---
   const stats = useMemo(() => {
-      const activities = data.checkInActivities || [];
+      const activities = localData.checkInActivities || [];
       const totalActivities = activities.length;
-      const totalLocations = data.checkInLocations?.length || 0;
       const totalCheckIns = activities.reduce((acc, act) => acc + (act.CurrentCount || 0), 0);
       const totalCapacity = activities.reduce((acc, act) => acc + (act.Capacity || 0), 0);
       const activeActivities = activities.filter(a => getActivityStatus(a).key === 'active').length;
+
+      // Participation Calculation: Unique / Total Users if available, else standard capacity
+      const participationRate = dashboardStats.userCount > 0 
+          ? Math.round((dashboardStats.uniqueParticipants / dashboardStats.userCount) * 100) 
+          : (totalCapacity > 0 ? Math.round((totalCheckIns / totalCapacity) * 100) : 0);
 
       const chartData = activities
           .sort((a, b) => (b.CurrentCount || 0) - (a.CurrentCount || 0))
@@ -283,21 +334,29 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
               count: a.CurrentCount || 0
           }));
 
-      return { totalActivities, totalLocations, totalCheckIns, totalCapacity, activeActivities, chartData };
-  }, [data.checkInActivities, data.checkInLocations]);
+      return { 
+          totalActivities, 
+          totalCheckIns, 
+          totalCapacity, 
+          activeActivities, 
+          chartData,
+          totalUsers: dashboardStats.userCount,
+          participationRate
+      };
+  }, [localData.checkInActivities, dashboardStats]);
 
   // --- Categories for Filter ---
   const uniqueCategories = useMemo(() => {
       const cats = new Set<string>();
-      (data.checkInActivities || []).forEach(act => {
+      (localData.checkInActivities || []).forEach(act => {
           if (act.Category) cats.add(act.Category);
       });
       return ['All', ...Array.from(cats).sort()];
-  }, [data.checkInActivities]);
+  }, [localData.checkInActivities]);
 
   // --- Filtering Logic ---
   const filteredActivities = useMemo(() => {
-      let filtered = (data.checkInActivities || []).filter(act => {
+      let filtered = (localData.checkInActivities || []).filter(act => {
           const matchesSearch = (act.Name || '').toLowerCase().includes(searchTerm.toLowerCase());
           const status = getActivityStatus(act);
           const matchesStatus = statusFilter === 'all' || status.key === statusFilter;
@@ -332,22 +391,22 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
           return 0;
       });
       return filtered;
-  }, [data.checkInActivities, searchTerm, statusFilter, locationFilter, categoryFilter]);
+  }, [localData.checkInActivities, searchTerm, statusFilter, locationFilter, categoryFilter]);
 
   // --- My Activities (User Only) ---
   const myActivities = useMemo(() => {
       if (!user || !user.assignedActivities || user.assignedActivities.length === 0) return [];
-      return data.checkInActivities.filter(act => user.assignedActivities?.includes(act.ActivityID));
-  }, [user, data.checkInActivities]);
+      return localData.checkInActivities.filter(act => user.assignedActivities?.includes(act.ActivityID));
+  }, [user, localData.checkInActivities]);
 
   const totalPages = Math.ceil(filteredActivities.length / itemsPerPage);
   const paginatedActivities = filteredActivities.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const recentAnnouncements = useMemo(() => {
-      return (data.announcements || [])
+      return (localData.announcements || [])
           .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
           .slice(0, 3);
-  }, [data.announcements]);
+  }, [localData.announcements]);
 
   const getPercentage = (current: number, max: number) => {
       if (!max || max === 0) return 0;
@@ -385,6 +444,18 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
                 <Activity className="w-64 h-64" />
             </div>
             <div className="relative z-10">
+                {/* Refresh Button - Top Right */}
+                <div className="absolute top-0 right-0">
+                    <button 
+                        onClick={refreshStats}
+                        disabled={isRefreshing}
+                        className={`p-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition-all ${isRefreshing ? 'animate-spin' : ''}`}
+                        title="Refresh Data"
+                    >
+                        <RefreshCw className="w-5 h-5" />
+                    </button>
+                </div>
+
                 <div className="flex items-center gap-3 mb-2">
                     <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
                         {user ? (
@@ -445,8 +516,8 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <StatCard title="เช็คอินแล้ว" value={stats.totalCheckIns.toLocaleString()} icon={Users} colorClass="bg-green-500" description={`จากความจุ ${stats.totalCapacity}`} />
                     <StatCard title="กิจกรรม Active" value={stats.activeActivities} icon={Activity} colorClass="bg-blue-500" description={`รวม ${stats.totalActivities} กิจกรรม`} />
-                    <StatCard title="สถานที่จัดงาน" value={stats.totalLocations} icon={MapPin} colorClass="bg-purple-500" />
-                    <StatCard title="Participation" value={`${stats.totalCapacity > 0 ? Math.round((stats.totalCheckIns / stats.totalCapacity) * 100) : 0}%`} icon={TrendingUp} colorClass="bg-orange-500" />
+                    <StatCard title="Total Users" value={stats.totalUsers.toLocaleString()} icon={Users} colorClass="bg-purple-500" description="ผู้ใช้งานในระบบ" />
+                    <StatCard title="Participation" value={`${stats.participationRate}%`} icon={TrendingUp} colorClass="bg-orange-500" description="Engagement Rate" />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -504,7 +575,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {myActivities.map(act => {
                                     const status = getActivityStatus(act);
-                                    const loc = data.checkInLocations.find(l => l.LocationID === act.LocationID);
+                                    const loc = localData.checkInLocations.find(l => l.LocationID === act.LocationID);
                                     return (
                                         <div key={act.ActivityID} className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl flex flex-col gap-2 hover:shadow-md transition-all cursor-pointer" onClick={() => navigate(`/activity-dashboard/${act.ActivityID}`)}>
                                             <div className="flex justify-between items-start">
@@ -563,7 +634,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
                         <div className="space-y-3">
                             <p className="text-sm text-gray-500 mb-2">เลือกดูสถานที่จัดงานเพื่อนำทาง</p>
                             <div className="max-h-60 overflow-y-auto custom-scrollbar pr-1 space-y-2">
-                                {data.checkInLocations.map(loc => (
+                                {localData.checkInLocations.map(loc => (
                                     <button 
                                         key={loc.LocationID}
                                         onClick={() => setSelectedLocation(loc)}
@@ -635,7 +706,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
                             onChange={(e) => setLocationFilter(e.target.value)}
                         >
                             <option value="all">ทุกสถานที่</option>
-                            {data.checkInLocations.map(loc => (
+                            {localData.checkInLocations.map(loc => (
                                 <option key={loc.LocationID} value={loc.LocationID}>{loc.Name}</option>
                             ))}
                         </select>
@@ -679,7 +750,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {paginatedActivities.map(act => {
                     const status = getActivityStatus(act);
-                    const location = data.checkInLocations.find(l => l.LocationID === act.LocationID);
+                    const location = localData.checkInLocations.find(l => l.LocationID === act.LocationID);
                     const percentage = getPercentage(act.CurrentCount || 0, act.Capacity || 0);
 
                     return (
