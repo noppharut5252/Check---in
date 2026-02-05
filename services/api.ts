@@ -56,6 +56,21 @@ export const fetchData = async (): Promise<AppData> => {
         if (!res.checkInLocations && res.locations) {
             res.checkInLocations = res.locations;
         }
+        
+        // Ensure activities list has correct properties for the frontend
+        if (res.activities) {
+            res.activities = res.activities.map((a: any) => ({
+                ...a,
+                id: a.id || a.ActivityID,
+                name: a.name || a.Name,
+                category: a.category || a.Category,
+                mode: a.mode || a.Mode,
+                levels: a.levels || a.Levels || '', // Fix for reading 'replace' on undefined
+                reqStudents: a.reqStudents || a.ReqStudents,
+                reqTeachers: a.reqTeachers || a.ReqTeachers
+            }));
+        }
+
         return res;
     }
     throw new Error(res.message || 'Failed to fetch data');
