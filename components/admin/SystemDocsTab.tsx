@@ -3,7 +3,8 @@ import React from 'react';
 import { 
     FileText, Database, Server, Code, Layers, CloudLightning, Package, Terminal, 
     AlertTriangle, Workflow, Shield, Globe, FolderTree, GitMerge,
-    Share2, Smartphone, Map, HardDrive, Lock, CheckCircle2, XCircle, ArrowRight
+    Share2, Smartphone, Map, HardDrive, Lock, CheckCircle2, XCircle, ArrowRight,
+    Palette, BarChart3, Zap, Monitor
 } from 'lucide-react';
 
 const SystemDocsTab: React.FC = () => {
@@ -278,8 +279,8 @@ const SystemDocsTab: React.FC = () => {
         <div className="space-y-2 text-sm text-gray-600">
             <p>ระบบใช้ <strong>GitHub Actions</strong> ในการ Build และ Deploy อัตโนมัติเมื่อมีการ Push Code ไปยัง Branch <code>main</code></p>
             <ol className="list-decimal list-inside space-y-1 ml-2">
-                <li>Developer Push Code -> GitHub</li>
-                <li>Action Trigger: <code>npm install</code> & <code>npm run build</code></li>
+                <li>Developer Push Code &rarr; GitHub</li>
+                <li>Action Trigger: <code>npm install</code> &amp; <code>npm run build</code></li>
                 <li>Vite สร้างไฟล์ Static ในโฟลเดอร์ <code>dist/</code></li>
                 <li>Deploy ไฟล์ใน <code>dist/</code> ไปยัง Branch <code>gh-pages</code></li>
                 <li>เว็บไซต์อัปเดตอัตโนมัติ</li>
@@ -350,8 +351,5 @@ const SystemDocsTab: React.FC = () => {
     </div>
   );
 };
-
-// Icons imports workaround for missing Lucide exports in standard set
-import { Palette, BarChart3, Zap, Monitor } from 'lucide-react';
 
 export default SystemDocsTab;
