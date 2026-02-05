@@ -152,7 +152,7 @@ const ActivityList: React.FC<ActivityListProps> = ({ data }) => {
                             </div>
                             <div className="flex items-center text-xs text-gray-500">
                                 <GraduationCap className="w-3.5 h-3.5 mr-2 text-green-500 shrink-0" />
-                                <span className="truncate">{act.levels.replace(/[\[\]"]/g, '').replace(/,/g, ', ')}</span>
+                                <span className="truncate">{(act.levels || '').replace(/[\[\]"]/g, '').replace(/,/g, ', ')}</span>
                             </div>
                             {isValidDate(startTime) && (
                                 <div className="flex items-center text-xs text-gray-500">
