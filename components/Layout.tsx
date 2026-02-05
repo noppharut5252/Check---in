@@ -22,7 +22,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const APP_VERSION = 'v1.0.2'; // Updated version
+  const APP_VERSION = 'v1.0.1'; // Updated version
   
   // Global Scanner State
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -86,10 +86,10 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
   }, [isAdminOrArea, role, config]);
 
   // Mobile Nav Items Configuration
-  // 4 items: 2 Left (Home, List), 2 Right (Passport, Menu) + 1 Floating Center (Scan)
+  // 4 items: 2 Left (Home, Activities), 2 Right (Passport, Menu) + 1 Floating Center (Scan)
   const mobileNavLeft = [
-      { id: 'home', label: 'หน้าแรก', icon: LayoutDashboard, path: '/home' },
-      { id: 'summary', label: 'สถิติ', icon: BarChart3, path: '/summary' }
+      { id: 'home', label: 'หน้าหลัก', icon: LayoutDashboard, path: '/home' },
+      { id: 'activities', label: 'รายการ', icon: Trophy, path: '/activities' }
   ];
   
   const mobileNavRight = [
@@ -295,28 +295,30 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
         {/* --- Main Content --- */}
         <main className="flex-1 flex flex-col min-w-0 bg-gray-50 relative">
             
-            {/* Mobile Header */}
-            <header className="md:hidden h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 sticky top-0 z-30 shadow-sm shrink-0">
-                <div className="flex items-center gap-2">
-                    <img 
-                        src="https://raw.githubusercontent.com/noppharut5252/Checkin/refs/heads/main/logo/logo.png" 
-                        className="w-7 h-7 object-contain"
-                        alt="Logo"
-                    />
-                    <span className="font-bold text-gray-800">UprightSchool</span>
-                </div>
-                {isLoggedIn ? (
-                    <div className="flex items-center gap-3">
-                        <button onClick={handleLogoutClick} className="text-gray-400 hover:text-red-500 p-1">
-                            <LogOut className="w-5 h-5" />
-                        </button>
-                        <div onClick={() => handleNav('/profile')} className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden border border-gray-100 shadow-sm cursor-pointer">
-                            <img src={userProfile?.PictureUrl || userProfile?.pictureUrl || "https://cdn-icons-png.flaticon.com/512/3135/3135768.png"} className="w-full h-full object-cover" />
-                        </div>
+            {/* Mobile Header (Updated for safe area) */}
+            <header className="md:hidden bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm shrink-0 pt-safe">
+                <div className="h-14 flex items-center justify-between px-4">
+                    <div className="flex items-center gap-2">
+                        <img 
+                            src="https://raw.githubusercontent.com/noppharut5252/Checkin/refs/heads/main/logo/logo.png" 
+                            className="w-7 h-7 object-contain"
+                            alt="Logo"
+                        />
+                        <span className="font-bold text-gray-800">UprightSchool</span>
                     </div>
-                ) : (
-                    <button onClick={() => handleNav('/login')} className="text-blue-600 font-bold text-sm">เข้าสู่ระบบ</button>
-                )}
+                    {isLoggedIn ? (
+                        <div className="flex items-center gap-3">
+                            <button onClick={handleLogoutClick} className="text-gray-400 hover:text-red-500 p-1">
+                                <LogOut className="w-5 h-5" />
+                            </button>
+                            <div onClick={() => handleNav('/profile')} className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden border border-gray-100 shadow-sm cursor-pointer">
+                                <img src={userProfile?.PictureUrl || userProfile?.pictureUrl || "https://cdn-icons-png.flaticon.com/512/3135/3135768.png"} className="w-full h-full object-cover" />
+                            </div>
+                        </div>
+                    ) : (
+                        <button onClick={() => handleNav('/login')} className="text-blue-600 font-bold text-sm">เข้าสู่ระบบ</button>
+                    )}
+                </div>
             </header>
 
             {/* Scrollable Area */}
@@ -348,10 +350,10 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                                 onClick={() => handleNav(item.path!)}
                                 className="flex flex-col items-center justify-center w-full h-full relative group pt-1 active:scale-95 transition-transform"
                             >
-                                <div className={`p-1 rounded-xl transition-all ${item.path && currentPath === item.path ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
+                                <div className={`p-1 rounded-xl transition-all ${item.path && currentPath.startsWith(item.path) ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
                                     <item.icon className="w-6 h-6" />
                                 </div>
-                                <span className={`text-[10px] font-medium transition-colors ${item.path && currentPath === item.path ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
+                                <span className={`text-[10px] font-medium transition-colors ${item.path && currentPath.startsWith(item.path) ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
                                     {item.label}
                                 </span>
                             </button>
@@ -369,10 +371,10 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                                 onClick={() => item.action ? item.action() : handleNav(item.path!)}
                                 className="flex flex-col items-center justify-center w-full h-full relative group pt-1 active:scale-95 transition-transform"
                             >
-                                <div className={`p-1 rounded-xl transition-all ${item.path && currentPath === item.path ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
+                                <div className={`p-1 rounded-xl transition-all ${item.path && currentPath.startsWith(item.path) ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
                                     <item.icon className="w-6 h-6" />
                                 </div>
-                                <span className={`text-[10px] font-medium transition-colors ${item.path && currentPath === item.path ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
+                                <span className={`text-[10px] font-medium transition-colors ${item.path && currentPath.startsWith(item.path) ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
                                     {item.label}
                                 </span>
                             </button>
