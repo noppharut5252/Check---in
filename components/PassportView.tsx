@@ -1,12 +1,15 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { AppData, User, PassportMission, CheckInLog } from '../types';
-import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check, Clock, User as UserIcon, Split, Grid, LayoutList, Share2, Volume2, Star, Zap, CheckCircle2, Circle } from 'lucide-react';
-import { getUserCheckInHistory } from '../services/api';
+import { AppData, User, PassportMission, CheckInLog, CertificateTemplate } from '../types';
+import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check, Clock, User as UserIcon, Split, Grid, LayoutList, Share2, Volume2, Star, Zap, CheckCircle2, Circle, FileBadge, Download, Loader2 } from 'lucide-react';
+import { getUserCheckInHistory, getCertificateConfig, redeemReward } from '../services/api';
 // @ts-ignore
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
 import { sharePassportAchievement } from '../services/liff';
+
+// Declare html2pdf
+declare var html2pdf: any;
 
 interface PassportViewProps {
     data: AppData;
@@ -163,18 +166,40 @@ const PassportSkeleton = () => {
 };
 
 // --- Redemption Modal ---
-const RedemptionModal = ({ isOpen, onClose, mission, user }: { isOpen: boolean, onClose: () => void, mission: PassportMission, user: User }) => {
+const RedemptionModal = ({ isOpen, onClose, mission, user, data }: { isOpen: boolean, onClose: () => void, mission: PassportMission, user: User, data: AppData }) => {
     const [qrSrc, setQrSrc] = useState('');
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [template, setTemplate] = useState<CertificateTemplate | null>(null);
     const themeColor = mission.rewardColor || '#F59E0B';
 
     useEffect(() => {
-        if (isOpen && mission) {
-            // Helper to clean strings for pipe delimiter
+        if (!isOpen || !mission) return;
+
+        if (mission.rewardType === 'certificate') {
+            // Load Certificate Config
+            const loadConfig = async () => {
+                try {
+                    // Try to find specific template if ID exists
+                    const configs = await getCertificateConfig();
+                    if (mission.certTemplateId && configs[mission.certTemplateId]) {
+                        setTemplate(configs[mission.certTemplateId]);
+                    } else if (configs['default']) {
+                        setTemplate(configs['default']);
+                    } else {
+                        // Fallback
+                        const areaTemplate = configs['area'];
+                        const firstTemplate = Object.values(configs)[0];
+                        setTemplate(areaTemplate || firstTemplate || null);
+                    }
+                } catch(e) {
+                    console.error("Failed to load cert config", e);
+                }
+            };
+            loadConfig();
+        } else {
+            // Standard QR
             const clean = (s: string | undefined) => (s || '').replace(/\|/g, ' ').trim();
             const fullName = `${user.Prefix || ''} ${user.Name || ''} ${user.Surname || ''}`.trim();
-            
-            // Format: REDEEM|UserID|MissionID|Timestamp|Name|Role|School
-            // This allows the scanner to identify user immediately even without DB sync
             const redeemPayload = `REDEEM|${clean(user.userid || user.UserID)}|${clean(mission.id)}|${Date.now()}|${clean(fullName)}|${clean(user.Role || user.level)}|${clean(user.SchoolID)}`;
             
             QRCode.toDataURL(redeemPayload, { margin: 1, width: 300, color: { dark: '#000000', light: '#ffffff' } })
@@ -182,9 +207,139 @@ const RedemptionModal = ({ isOpen, onClose, mission, user }: { isOpen: boolean, 
         }
     }, [isOpen, mission, user]);
 
-    if (!isOpen) return null;
+    const handleDownloadCertificate = async () => {
+        if (!template) {
+            alert("ไม่พบรูปแบบเกียรติบัตร กรุณาติดต่อผู้ดูแลระบบ");
+            return;
+        }
 
-    const fullName = `${user.Prefix || ''} ${user.Name || ''} ${user.Surname || ''}`.trim();
+        setIsDownloading(true);
+
+        try {
+            // 1. Prepare Content
+            const fullName = `${user.Prefix || ''}${user.Name} ${user.Surname}`.trim();
+            const schoolName = data.schools.find(s => s.SchoolID === user.SchoolID)?.SchoolName || user.SchoolID || 'ไม่ระบุโรงเรียน';
+            const dateStr = new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' });
+            
+            // Serial logic: Just use timestamp for self-service or fetch count (simplified here)
+            const serialNo = `${mission.id.substring(0,4).toUpperCase()}-${new Date().getFullYear().toString().substr(-2)}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+
+            // 2. Generate HTML
+            // Reuse logic from DocumentsView roughly
+            const bgUrl = template.backgroundUrl;
+            const transparentImgStyle = `background-color: transparent !important; mix-blend-mode: normal;`;
+            let frameElement = '';
+            if (!bgUrl) {
+                if (template.frameStyle === 'infinite-wave') frameElement = '<div class="frame-infinite-wave"></div>';
+                else if (template.frameStyle === 'ornamental-corners') frameElement = '<div class="frame-ornamental-corners"></div><div class="frame-ornamental-extra"></div><div class="frame-ornamental-extra2"></div>';
+                else if (template.frameStyle === 'thai-premium') frameElement = '<div class="frame-thai-premium"></div>';
+                else if (template.frameStyle !== 'none') frameElement = '<div class="frame-simple-gold"></div>';
+            }
+
+            const defaultFont = template.fontFamily || 'Sarabun';
+            const shadowClass = template.enableTextShadow ? 'text-shadow-white' : '';
+            const sigHeight = template.signatureImgHeight ? `${template.signatureImgHeight}mm` : '20mm';
+            const sigWidth = template.signatureImgWidth ? `${template.signatureImgWidth}mm` : 'auto';
+            const sigImgStyle = `height: ${sigHeight}; width: ${sigWidth}; object-fit: contain; margin-bottom: -5mm; z-index: 1; background-color: transparent !important; mix-blend-mode: normal;`;
+
+            // Dummy QR for Cert
+            const verifyUrl = `${window.location.origin}${window.location.pathname}#/passport`;
+            const certQr = await QRCode.toDataURL(verifyUrl, { margin: 1, width: 300 });
+
+            const htmlContent = `
+            <html><head>
+            <link href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@400;600&family=Chakra+Petch:wght@400;600&family=Charmonman:wght@400;700&family=Kanit:wght@300;400;600&family=Kodchasan:wght@400;600&family=Mali:wght@400;600&family=Noto+Serif+Thai:wght@400;600&family=Sarabun:wght@400;600&family=Srisakdi:wght@400;700&family=Thasadith:wght@400;700&display=swap" rel="stylesheet">
+            <style>
+                body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                .page { width: 297mm; height: 210mm; position: relative; overflow: hidden; background-color: white; margin: 0 auto; }
+                .frame-simple-gold { position: absolute; top: 6mm; left: 6mm; right: 6mm; bottom: 6mm; border: 3px solid #D4AF37; border-radius: 8px; z-index: 1; pointer-events: none; }
+                .frame-infinite-wave { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-image: url('data:image/svg+xml;utf8,<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="wave" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M0 20 Q 10 0 20 20 T 40 20" fill="none" stroke="%23FDE047" stroke-width="2" stroke-opacity="0.3"/></pattern></defs><rect width="100%" height="100%" fill="url(%23wave)"/></svg>'); z-index: 1; pointer-events: none; border: 10mm solid transparent; }
+                .frame-ornamental-corners { position: absolute; top: 10mm; left: 10mm; right: 10mm; bottom: 10mm; border: 2px solid #666; z-index: 1; pointer-events: none; }
+                .frame-ornamental-corners::before { content: ''; position: absolute; top: -2px; left: -2px; width: 40px; height: 40px; border-top: 5px solid #D4AF37; border-left: 5px solid #D4AF37; }
+                .frame-ornamental-corners::after { content: ''; position: absolute; bottom: -2px; right: -2px; width: 40px; height: 40px; border-bottom: 5px solid #D4AF37; border-right: 5px solid #D4AF37; }
+                .frame-ornamental-extra { content: ''; position: absolute; top: 10mm; right: 10mm; width: 40px; height: 40px; border-top: 5px solid #D4AF37; border-right: 5px solid #D4AF37; }
+                .frame-ornamental-extra2 { content: ''; position: absolute; bottom: 10mm; left: 10mm; width: 40px; height: 40px; border-bottom: 5px solid #D4AF37; border-left: 5px solid #D4AF37; }
+                .frame-thai-premium { position: absolute; top: 10mm; left: 10mm; right: 10mm; bottom: 10mm; border: 8px solid transparent; border-image: linear-gradient(to bottom right, #b88746, #fdf5a6, #b88746) 1; z-index: 1; pointer-events: none; }
+                .bg-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+                .content { position: relative; z-index: 10; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
+                .text-shadow-white { text-shadow: 2px 0 0 #fff, -2px 0 0 #fff, 0 2px 0 #fff, 0 -2px 0 #fff, 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff; }
+                .logos { display: flex; justify-content: space-between; width: 80%; margin-bottom: 5mm; position: relative; }
+                .logos.single { justify-content: center; }
+                .logo-img { height: 100%; object-fit: contain; background-color: transparent !important; } 
+                .header { font-size: 24pt; font-weight: bold; color: #1e3a8a; margin-bottom: 5mm; text-align: center; line-height: 1.2; }
+                .subheader { font-size: 16pt; margin-bottom: 8mm; text-align: center; }
+                .name { font-size: 32pt; font-weight: bold; color: #111; margin-bottom: 5mm; text-align: center; border-bottom: 2px dotted #ccc; padding: 0 20px; min-width: 50%; }
+                .desc { font-size: 16pt; margin-bottom: 5mm; max-width: 80%; text-align: center; line-height: 1.5; }
+                .highlight { font-weight: bold; color: #2563eb; }
+                .date { font-size: 14pt; margin-top: auto; margin-bottom: 10mm; }
+                .signatures { display: flex; justify-content: center; gap: 15mm; width: 90%; align-items: flex-end; }
+                .sig-block { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 60mm; }
+                .sig-line { width: 100%; border-bottom: 1px dotted #000; margin-bottom: 2px; }
+                .sig-name { font-size: 12pt; font-weight: bold; padding-top: 2px; width: 100%; }
+                .sig-pos { font-size: 10pt; white-space: pre-line; line-height: 1.3; margin-top: 2px; }
+                .qr-verify { position: absolute; display: flex; flex-direction: column; align-items: center; background: rgba(255, 255, 255, 0.9); padding: 6px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+                .qr-img { width: 22mm; height: 22mm; background-color: transparent !important; }
+                .qr-text { font-size: 8pt; margin-top: 2px; color: #333; font-weight: bold; text-transform: uppercase; }
+                .serial-no { position: absolute; font-size: 10pt; font-family: 'Courier New', monospace; color: #333; font-weight: bold; background: rgba(255, 255, 255, 0.85); padding: 2px 8px; border-radius: 4px; border: 1px solid #ddd; }
+            </style>
+            </head><body>
+            <div class="page">
+                ${bgUrl ? `<img src="${bgUrl}" class="bg-img" />` : frameElement}
+                <div class="serial-no" style="top:${template.serialTop || 10}mm; right:${template.serialRight || 10}mm;">No. ${serialNo}</div>
+                <div class="content" style="padding-top:${template.contentTop || 25}mm;">
+                    <div class="logos ${!template.logoRightUrl ? 'single' : ''}" style="height:${template.logoHeight || 35}mm;">
+                        ${template.logoLeftUrl ? `<img src="${template.logoLeftUrl}" class="logo-img" style="${transparentImgStyle}" />` : '<div></div>'}
+                        ${template.logoRightUrl ? `<img src="${template.logoRightUrl}" class="logo-img" style="${transparentImgStyle}" />` : ''}
+                    </div>
+                    <div class="header ${shadowClass}" style="font-family:'${template.fontHeader || defaultFont}', sans-serif;">${template.headerText}</div>
+                    <div class="subheader ${shadowClass}" style="font-family:'${template.fontSubHeader || defaultFont}', sans-serif;">${template.subHeaderText}</div>
+                    <div class="name ${shadowClass}" style="font-family:'${template.fontName || defaultFont}', sans-serif;">${fullName}</div>
+                    <div class="desc ${shadowClass}" style="font-family:'${template.fontDesc || defaultFont}', sans-serif;">
+                        ${user.Role === 'teacher' ? 'ครูผู้ฝึกสอน' : ''}โรงเรียน <span class="highlight">${schoolName}</span><br/>
+                        ผ่านการเข้าร่วมกิจกรรม<span class="highlight"> "${mission.title}"</span><br/>
+                        ${mission.rewardLabel}
+                    </div>
+                    <div class="date ${shadowClass}" style="font-family:'${template.fontDate || defaultFont}', sans-serif;">${template.dateText}</div>
+                    <div class="signatures" style="margin-bottom:${template.footerBottom || 25}mm;">
+                        ${template.signatories.map(sig => `<div class="sig-block"><div style="position:relative; display:flex; justify-content:center; align-items:flex-end;">${sig.signatureUrl ? `<img src="${sig.signatureUrl}" class="sig-img" style="${sigImgStyle}" />` : '<div style="height:20mm;"></div>'}</div>${template.showSignatureLine!==false?'<div class="sig-line"></div>':''}<div class="sig-name ${shadowClass}" style="font-family:'${template.fontSignatures || defaultFont}', sans-serif; margin-top:${template.signatureSpacing || 3}mm;">(${sig.name})</div><div class="sig-pos ${shadowClass}" style="font-family:'${template.fontSignatures || defaultFont}', sans-serif;">${sig.position}</div></div>`).join('')}
+                    </div>
+                    <div class="qr-verify" style="bottom:${template.qrBottom || 10}mm; right:${template.qrRight || 10}mm;">
+                        <img src="${certQr}" class="qr-img" style="${transparentImgStyle}" />
+                        <div class="qr-text">Scan for Verify</div>
+                    </div>
+                </div>
+            </div>
+            </body></html>`;
+
+            // 3. Convert & Save
+            const element = document.createElement('div');
+            element.innerHTML = htmlContent;
+            document.body.appendChild(element); // Temp append
+
+            const opt = {
+                margin: 0,
+                filename: `certificate_${mission.id}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, logging: false },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+            };
+            
+            await html2pdf().set(opt).from(element).save();
+            document.body.removeChild(element); // Cleanup
+
+            // 4. Log Redemption in Backend
+            // Fire and forget, or await if critical. Here we assume success to not block user.
+            redeemReward(user.userid || user.UserID, mission.id, 'SELF');
+
+        } catch (e) {
+            console.error(e);
+            alert('เกิดข้อผิดพลาดในการสร้างเกียรติบัตร');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
+    if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
@@ -200,26 +355,48 @@ const RedemptionModal = ({ isOpen, onClose, mission, user }: { isOpen: boolean, 
                     <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
                     <div className="relative z-10">
                         <div className="bg-white/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm shadow-inner">
-                            <Gift className="w-8 h-8 text-white animate-bounce" />
+                            {mission.rewardType === 'certificate' ? <FileBadge className="w-8 h-8 text-white animate-bounce" /> : <Gift className="w-8 h-8 text-white animate-bounce" />}
                         </div>
-                        <h3 className="text-xs font-bold uppercase tracking-widest opacity-90 mb-1">Redemption Ticket</h3>
+                        <h3 className="text-xs font-bold uppercase tracking-widest opacity-90 mb-1">
+                            {mission.rewardType === 'certificate' ? 'Certificate Award' : 'Redemption Ticket'}
+                        </h3>
                         <h2 className="text-2xl font-black leading-tight drop-shadow-md">{mission.rewardLabel}</h2>
                     </div>
                 </div>
 
                 <div className="p-6 flex flex-col items-center text-center bg-white relative">
-                    <div className="mb-4">
-                        <div className="text-xs text-gray-400 font-bold uppercase mb-2">Scan to Redeem</div>
-                        <div className="p-2 rounded-xl border-4 border-dashed" style={{ borderColor: themeColor }}>
-                            {qrSrc ? <img src={qrSrc} className="w-48 h-48 object-contain mix-blend-multiply" /> : <div className="w-48 h-48 bg-gray-100 animate-pulse rounded-lg" />}
-                        </div>
+                    <div className="mb-4 w-full">
+                        {mission.rewardType === 'certificate' ? (
+                            <div className="space-y-4">
+                                <p className="text-sm text-gray-500">
+                                    ยินดีด้วย! คุณผ่านภารกิจนี้แล้ว<br/>สามารถดาวน์โหลดเกียรติบัตรได้ทันที
+                                </p>
+                                <button 
+                                    onClick={handleDownloadCertificate}
+                                    disabled={isDownloading}
+                                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center"
+                                >
+                                    {isDownloading ? <Loader2 className="w-5 h-5 animate-spin mr-2"/> : <Download className="w-5 h-5 mr-2"/>}
+                                    ดาวน์โหลดเกียรติบัตร (PDF)
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="text-xs text-gray-400 font-bold uppercase mb-2">Scan to Redeem</div>
+                                <div className="p-2 rounded-xl border-4 border-dashed mx-auto w-fit" style={{ borderColor: themeColor }}>
+                                    {qrSrc ? <img src={qrSrc} className="w-40 h-40 object-contain mix-blend-multiply" /> : <div className="w-40 h-40 bg-gray-100 animate-pulse rounded-lg" />}
+                                </div>
+                            </>
+                        )}
                     </div>
+                    
+                    {/* User Info Footer */}
                     <div className="w-full bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center gap-3 text-left">
                         <div className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden shrink-0 border border-gray-300">
                             <img src={user.PictureUrl || `https://ui-avatars.com/api/?name=${user.Name}`} className="w-full h-full object-cover" />
                         </div>
                         <div className="min-w-0">
-                            <p className="text-sm font-bold text-gray-900 truncate">{fullName}</p>
+                            <p className="text-sm font-bold text-gray-900 truncate">{`${user.Prefix || ''} ${user.Name} ${user.Surname}`}</p>
                             <p className="text-xs text-gray-500 truncate">ID: {user.userid}</p>
                         </div>
                     </div>
@@ -406,7 +583,8 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                     isOpen={!!showRedeem} 
                     onClose={() => setShowRedeem(null)} 
                     mission={showRedeem} 
-                    user={user} 
+                    user={user}
+                    data={data}
                 />
             )}
 
@@ -492,6 +670,7 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                             const isComplete = statusData.isComplete;
                             const cardColor = mission.rewardColor || '#F59E0B';
                             const percent = statusData.progressPercent;
+                            const isCert = mission.rewardType === 'certificate';
                             
                             return (
                                 <div 
@@ -517,7 +696,7 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                         {isComplete ? (
                                             <div className="ink-stamp stamp-border" style={{ color: cardColor, width: '60px', height: '60px', padding: '2px', border: '2px solid' }}>
                                                 <span className="text-[8px] font-black uppercase">PASSED</span>
-                                                <Award className="w-6 h-6" />
+                                                {isCert ? <FileBadge className="w-6 h-6"/> : <Award className="w-6 h-6" />}
                                             </div>
                                         ) : (
                                             <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-300">
@@ -563,15 +742,16 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
 
                                         <div className="flex items-center justify-between mt-4">
                                             <div className="flex items-center text-sm font-bold text-gray-700">
-                                                <Gift className="w-4 h-4 mr-2 text-orange-500" />
+                                                {isCert ? <FileBadge className="w-4 h-4 mr-2 text-purple-500" /> : <Gift className="w-4 h-4 mr-2 text-orange-500" />}
                                                 <span style={{ color: cardColor }}>{mission.rewardLabel}</span>
                                             </div>
                                             {isComplete && (
                                                 <button 
                                                     onClick={() => { playSound('click'); setShowRedeem(mission); }}
-                                                    className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-full shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex items-center"
+                                                    className={`px-4 py-2 text-white text-xs font-bold rounded-full shadow-lg active:scale-95 transition-all flex items-center ${isCert ? 'bg-purple-600 hover:bg-purple-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                                                 >
-                                                    <Gift className="w-3 h-3 mr-1 animate-pulse" /> แลกรางวัล
+                                                    {isCert ? <Download className="w-3 h-3 mr-1 animate-pulse" /> : <Gift className="w-3 h-3 mr-1 animate-pulse" />}
+                                                    {isCert ? 'ดาวน์โหลด' : 'แลกรางวัล'}
                                                 </button>
                                             )}
                                         </div>
@@ -599,7 +779,7 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                                 <img src={mission.stampImage} className="w-12 h-12 object-contain ink-stamp z-10" style={{ filter: `drop-shadow(0 2px 2px ${cardColor}40)` }} />
                                             ) : (
                                                 <div className="ink-stamp z-10" style={{ color: cardColor }}>
-                                                    <Award className="w-10 h-10" />
+                                                    {mission.rewardType === 'certificate' ? <FileBadge className="w-10 h-10" /> : <Award className="w-10 h-10" />}
                                                 </div>
                                             )}
                                             <span className="text-[9px] font-bold mt-2 z-10 truncate w-full" style={{ color: cardColor }}>{mission.rewardLabel}</span>
