@@ -197,7 +197,8 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         setIsScannerOpen(false);
         // Skip 'verifying' state, proceed to logic immediately for speed
 
-        // Format: REDEEM|UserID|MissionID|Timestamp
+        // Format: REDEEM|UserID|MissionID|Timestamp|Name|Role|School
+        // The new format adds Name, Role, and School to solve "Unknown User" issues
         const parts = code.split('|');
         
         if (parts[0] !== 'REDEEM' || parts.length < 4) { 
@@ -206,7 +207,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
             return;
         }
 
-        const [_, userId, missionId, timestamp] = parts;
+        const [_, userId, missionId, timestamp, qrName, qrRole, qrSchool] = parts;
         
         // 1. Check Expiration
         const qrTime = parseInt(timestamp);
@@ -226,16 +227,29 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         }
 
         // 3. Fast User Lookup (Local Only)
-        // If not found, create a placeholder immediately so we don't block redemption
         let currentUser = allUsers.find(u => u.UserID === userId);
+        
+        // If not found in local DB, attempt to use data embedded in QR
         if (!currentUser) {
-            currentUser = { 
-                UserID: userId, 
-                Name: 'ผู้ใช้งานใหม่ / ไม่พบข้อมูล', 
-                SchoolID: userId.substring(0, 6), // Display part of ID as hint
-                Role: 'User',
-                PictureUrl: ''
-            } as User;
+            if (qrName) {
+                // Use data from QR
+                currentUser = { 
+                    UserID: userId, 
+                    Name: qrName, 
+                    SchoolID: qrSchool || 'N/A', 
+                    Role: qrRole || 'User',
+                    PictureUrl: ''
+                } as User;
+            } else {
+                // Legacy Fallback for old QRs
+                currentUser = { 
+                    UserID: userId, 
+                    Name: 'ผู้ใช้งานใหม่ / ไม่พบข้อมูล', 
+                    SchoolID: userId.substring(0, 6), // Display part of ID as hint
+                    Role: 'User',
+                    PictureUrl: ''
+                } as User;
+            }
         }
 
         // 4. Check Inventory (Local)
