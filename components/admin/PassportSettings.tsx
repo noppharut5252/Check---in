@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog } from '../../types';
 import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart, Volume2, RefreshCcw, Timer } from 'lucide-react';
-import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions } from '../../services/api';
+import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions, getUserCheckInHistory } from '../../services/api';
 import { resizeImage } from '../../services/utils';
 import SearchableSelect from '../SearchableSelect';
 import QRScannerModal from '../QRScannerModal';
@@ -48,7 +48,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [isContinuousMode, setIsContinuousMode] = useState(false); // New: Continuous Mode
     const [verifyResult, setVerifyResult] = useState<{
-        status: 'valid' | 'invalid' | 'redeemed' | 'not_completed' | 'out_of_stock' | 'expired';
+        status: 'valid' | 'invalid' | 'redeemed' | 'not_completed' | 'out_of_stock' | 'expired' | 'verifying';
         user?: User;
         mission?: PassportMission;
         redemption?: RedemptionLog;
@@ -67,7 +67,6 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
     // Fetch Logs & Users
     const loadData = async () => {
-        if (isDataLoaded) return;
         setIsLoadingStats(true);
         try {
             const [logsRes, usersRes, redemptionsRes] = await Promise.all([
@@ -97,19 +96,21 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         setShowDashboard(true);
     };
 
-    // Load data when opening stats specific mission or scanner
+    // Load data when opening stats specific mission
     useEffect(() => {
-        if ((viewingStatsFor || isScannerOpen) && !isDataLoaded) {
+        if (viewingStatsFor && !isDataLoaded) {
             loadData();
         }
-    }, [viewingStatsFor, isScannerOpen]);
+    }, [viewingStatsFor]);
 
-    // ... (Keep existing Logic functions: checkUserCompletion, getCompletedUsers, dashboardStats) ...
     // --- Logic: Check Mission Completion ---
-    const checkUserCompletion = (userId: string, mission: PassportMission) => {
-        const userLogs = allLogs.filter(l => l.UserID === userId);
+    // Updated: Accept optional logsOverride for real-time checking
+    const checkUserCompletion = (userId: string, mission: PassportMission, logsOverride?: CheckInLog[]) => {
+        const sourceLogs = logsOverride || allLogs;
+        const userLogs = sourceLogs.filter(l => l.UserID === userId);
         const targetLogs = mission.dateScope === 'all_time' ? userLogs : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
         const logic = mission.conditionLogic || 'AND';
+        
         const results = mission.requirements.map(req => {
             if (req.type === 'specific_activity') return targetLogs.some(l => String(l.ActivityID) === String(req.targetId));
             else if (req.type === 'total_count') return targetLogs.length >= req.targetValue;
@@ -181,12 +182,15 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
     // --- Actions ---
 
-    const handleScanResult = (code: string) => {
+    const handleScanResult = async (code: string) => {
         setIsScannerOpen(false);
+        // Show verifying state immediately
+        setVerifyResult({ status: 'verifying', message: 'กำลังดึงข้อมูลล่าสุด...' });
+
         // Format: REDEEM|UserID|MissionID|Timestamp
         const parts = code.split('|');
         
-        if (parts[0] !== 'REDEEM' || parts.length < 4) { // Increased length check for timestamp
+        if (parts[0] !== 'REDEEM' || parts.length < 4) { 
             playSound('error');
             setVerifyResult({ status: 'invalid', message: 'QR Code ไม่ถูกต้อง (รูปแบบผิด)' });
             return;
@@ -197,7 +201,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         // 1. Check Expiration (5 Minutes)
         const qrTime = parseInt(timestamp);
         const now = Date.now();
-        if (now - qrTime > 5 * 60 * 1000) { // 5 minutes in ms
+        if (now - qrTime > 5 * 60 * 1000) { 
             playSound('error');
             setVerifyResult({ status: 'expired', message: 'QR Code หมดอายุ (เกิน 5 นาที) โปรดให้นักเรียนรีเฟรชหน้าจอ' });
             return;
@@ -210,14 +214,45 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
             return;
         }
 
-        const user = allUsers.find(u => u.UserID === userId) || { UserID: userId, Name: 'Unknown User', Role: 'Guest' } as User;
+        // --- CRITICAL FIX: Fetch fresh data for this specific user ---
+        // This solves "Unknown User" and "Unable to redeem" (stale logs) issues
+        let currentUser = allUsers.find(u => u.UserID === userId);
+        let currentLogs = allLogs;
+
+        try {
+            // Fetch logs for this user specifically to get latest status
+            const freshUserLogs = await getUserCheckInHistory(userId);
+            
+            // Fetch user info if missing
+            if (!currentUser) {
+                // If user not in cache, try to refresh all users (fallback)
+                // Note: ideally we'd have a getUser(id) API, but getAllUsers is what we have for admin list
+                const usersRes = await getAllUsers();
+                setAllUsers(usersRes); // Update global state
+                currentUser = usersRes.find(u => u.UserID === userId);
+            }
+
+            // Merge fresh logs into current logs for validation
+            // We use a temporary array for validation to ensure correctness without waiting for state update
+            const otherLogs = allLogs.filter(l => l.UserID !== userId);
+            currentLogs = [...otherLogs, ...freshUserLogs];
+            
+            // Also update global state for UI consistency
+            setAllLogs(currentLogs);
+
+        } catch (e) {
+            console.error("Auto-fetch failed", e);
+            // Fallback to existing state if fetch fails
+        }
+
+        const userDisplay = currentUser || { UserID: userId, Name: 'Unknown User', Role: 'Guest' } as User;
 
         // Check Inventory (Global Cap)
         if (mission.maxRedemptions && mission.maxRedemptions > 0) {
             const currentRedeemed = allRedemptions.filter(r => r.MissionID === missionId).length;
             if (currentRedeemed >= mission.maxRedemptions) {
                 playSound('error');
-                setVerifyResult({ status: 'out_of_stock', user, mission, message: 'ของรางวัลหมดแล้ว (Out of Stock)' });
+                setVerifyResult({ status: 'out_of_stock', user: userDisplay, mission, message: 'ของรางวัลหมดแล้ว (Out of Stock)' });
                 return;
             }
         }
@@ -225,22 +260,22 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         // Check if already redeemed
         const existingRedemption = allRedemptions.find(r => r.UserID === userId && r.MissionID === missionId);
         if (existingRedemption) {
-            playSound('error'); // Or separate sound for already redeemed
-            setVerifyResult({ status: 'redeemed', user, mission, redemption: existingRedemption });
+            playSound('error'); 
+            setVerifyResult({ status: 'redeemed', user: userDisplay, mission, redemption: existingRedemption });
             return;
         }
 
-        // Check completion status (Security Check)
-        const isComplete = checkUserCompletion(userId, mission);
+        // Check completion status (Security Check) with FRESH LOGS
+        const isComplete = checkUserCompletion(userId, mission, currentLogs);
         if (!isComplete) {
             playSound('error');
-            setVerifyResult({ status: 'not_completed', user, mission, message: 'ผู้ใช้ยังทำภารกิจไม่ครบเงื่อนไข' });
+            setVerifyResult({ status: 'not_completed', user: userDisplay, mission, message: 'ผู้ใช้ยังทำภารกิจไม่ครบเงื่อนไข' });
             return;
         }
 
         // Valid and Ready
         playSound('success');
-        setVerifyResult({ status: 'valid', user, mission });
+        setVerifyResult({ status: 'valid', user: userDisplay, mission });
     };
 
     const confirmRedemptionFromScan = async () => {
@@ -306,7 +341,8 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         let Icon = AlertTriangle;
         let title = 'ตรวจสอบ';
 
-        if (status === 'valid') { color = 'green'; Icon = CheckCircle; title = 'พร้อมแจกรางวัล'; }
+        if (status === 'verifying') { color = 'blue'; Icon = Loader2; title = 'กำลังตรวจสอบ...'; }
+        else if (status === 'valid') { color = 'green'; Icon = CheckCircle; title = 'พร้อมแจกรางวัล'; }
         else if (status === 'redeemed') { color = 'blue'; Icon = Check; title = 'รับไปแล้ว'; }
         else if (status === 'out_of_stock') { color = 'purple'; Icon = X; title = 'ของรางวัลหมด'; }
         else if (status === 'expired') { color = 'orange'; Icon = Timer; title = 'QR Code หมดอายุ'; }
@@ -315,18 +351,26 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         return (
             <div className="fixed inset-0 z-[400] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
                 <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl relative animate-in zoom-in-95">
-                    <button onClick={() => setVerifyResult(null)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors z-10"><X className="w-5 h-5 text-gray-500" /></button>
+                    {status !== 'verifying' && (
+                        <button onClick={() => setVerifyResult(null)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors z-10"><X className="w-5 h-5 text-gray-500" /></button>
+                    )}
                     
                     <div className={`p-6 text-center text-white bg-${color}-600`}>
                         <div className="bg-white/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm shadow-inner">
-                            <Icon className="w-10 h-10 text-white" />
+                            <Icon className={`w-10 h-10 text-white ${status === 'verifying' ? 'animate-spin' : ''}`} />
                         </div>
                         <h2 className="text-2xl font-bold">{title}</h2>
                         {message && <p className="text-white/80 text-sm mt-1">{message}</p>}
                     </div>
 
                     <div className="p-6 space-y-4">
-                        {user && (
+                        {status === 'verifying' && (
+                            <div className="text-center text-gray-500 py-4">
+                                กำลังดึงข้อมูลล่าสุดจากระบบ...
+                            </div>
+                        )}
+
+                        {user && status !== 'verifying' && (
                             <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
                                 <img src={user.PictureUrl || `https://ui-avatars.com/api/?name=${user.Name}`} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" />
                                 <div>
@@ -336,7 +380,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                             </div>
                         )}
 
-                        {mission && (
+                        {mission && status !== 'verifying' && (
                             <div className="text-center border-t border-dashed border-gray-200 pt-4">
                                 <div className="text-xs text-gray-400 uppercase font-bold mb-1">Reward Item</div>
                                 <div className="text-lg font-black text-gray-800" style={{ color: mission.rewardColor }}>{mission.rewardLabel}</div>
@@ -374,7 +418,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                             </>
                         )}
                         
-                        {status !== 'valid' && (
+                        {status !== 'valid' && status !== 'verifying' && (
                             <button 
                                 onClick={() => { setVerifyResult(null); setIsScannerOpen(true); }}
                                 className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors flex items-center justify-center"
