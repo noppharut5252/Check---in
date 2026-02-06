@@ -308,6 +308,10 @@ export interface PassportMission {
     maxRedemptions?: number; // 0 or undefined = unlimited
     isVisible?: boolean; // Default true
     conditionLogic?: 'AND' | 'OR'; // Default AND
+    
+    // Certificate Reward Fields
+    rewardType?: 'stamp' | 'certificate'; // Default 'stamp'
+    certTemplateId?: string; // ID from CertificateConfig
 }
 
 export interface PassportConfig {
