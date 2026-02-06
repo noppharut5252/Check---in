@@ -5,11 +5,12 @@ import { User, AppData, AppConfig } from '../types';
 import { 
     LayoutDashboard, MapPin, Users, Trophy, Edit3, Award, Printer, 
     FileBadge, IdCard, Gavel, Megaphone, School, UserCog, LogOut, 
-    Menu, X, UserCircle, LogIn, ChevronRight, ChevronLeft, Settings, BrainCircuit, MonitorPlay, GraduationCap, Map, ScanLine, QrCode, ShieldCheck, BarChart3
+    Menu, X, UserCircle, LogIn, ChevronRight, ChevronLeft, Settings, BrainCircuit, MonitorPlay, GraduationCap, Map, ScanLine, QrCode, ShieldCheck, BarChart3, MessageSquareWarning
 } from 'lucide-react';
 import { logoutLiff } from '../services/liff';
 import QRScannerModal from './QRScannerModal';
 import ConfirmationModal from './ConfirmationModal';
+import SystemFeedbackModal from './SystemFeedbackModal';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -30,6 +31,9 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
   // Logout State
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // System Feedback State
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   const role = userProfile?.level?.toLowerCase() || 'guest';
   const isAdminOrArea = role === 'admin' || role === 'area';
@@ -144,6 +148,13 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
             onScan={handleScanResult} 
         />
 
+        {/* System Feedback Modal */}
+        <SystemFeedbackModal 
+            isOpen={isFeedbackOpen}
+            onClose={() => setIsFeedbackOpen(false)}
+            user={userProfile}
+        />
+
         {/* Logout Confirmation Modal */}
         <ConfirmationModal 
             isOpen={showLogoutConfirm}
@@ -209,6 +220,24 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                         )}
                     </button>
                 ))}
+                
+                {/* System Feedback Item */}
+                <div className="pt-2 mt-2 border-t border-gray-100">
+                    <button
+                        onClick={() => setIsFeedbackOpen(true)}
+                        className={`w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative text-gray-600 hover:bg-orange-50 hover:text-orange-700 ${isCollapsed ? 'justify-center' : ''}`}
+                        title={isCollapsed ? "แจ้งปัญหา/แนะนำ" : ''}
+                    >
+                        <MessageSquareWarning className={`w-5 h-5 shrink-0 text-orange-500 ${!isCollapsed ? 'mr-3' : ''}`} />
+                        {!isCollapsed && <span className="truncate">แจ้งปัญหา/แนะนำ</span>}
+                        
+                        {isCollapsed && (
+                            <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                                แจ้งปัญหา/แนะนำ
+                            </div>
+                        )}
+                    </button>
+                </div>
             </div>
 
             <div className="p-4 border-t border-gray-100">
@@ -274,6 +303,18 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                                 <ChevronRight className="w-4 h-4 ml-auto text-gray-300" />
                             </button>
                         ))}
+                        
+                        {/* System Feedback Item Mobile */}
+                        <button
+                            onClick={() => { setIsFeedbackOpen(true); setIsSidebarOpen(false); }}
+                            className="w-full flex items-center px-4 py-3.5 rounded-2xl text-sm font-medium transition-all text-gray-600 hover:bg-orange-50 hover:text-orange-700 mt-2 border-t border-gray-100"
+                        >
+                            <div className="p-2 rounded-xl mr-3 bg-orange-100">
+                                <MessageSquareWarning className="w-5 h-5 text-orange-600" />
+                            </div>
+                            แจ้งปัญหาการใช้งาน / แนะนำ
+                            <ChevronRight className="w-4 h-4 ml-auto text-gray-300" />
+                        </button>
                     </div>
                     
                     <div className="p-4 bg-gray-50 border-t border-gray-100 pb-safe">
