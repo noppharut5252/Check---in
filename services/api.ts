@@ -201,13 +201,19 @@ export const respondToSystemReport = async (data: {
     userLineId?: string,
     subject?: string
 }) => {
+    // Respond can return 'success' or an error object
     const res = await apiRequest('respondToReport', data);
-    return res.status === 'success';
+    return res; 
 };
 
 // New: Test LINE Integration
 export const testLineIntegration = async (token: string, userId: string) => {
     return await apiRequest('testLineIntegration', { token, userId });
+};
+
+// New: Get LINE Quota
+export const getLineQuota = async () => {
+    return await apiRequest('getLineQuota');
 };
 
 export const uploadImage = async (base64Data: string, filename: string) => {
