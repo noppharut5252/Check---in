@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppData, User, AppConfig } from '../types';
-import { Save, Loader2, Lock, Eye, EyeOff, LayoutDashboard, MonitorPlay, Users, MapPin, Trophy, Edit3, Award, Printer, FileBadge, IdCard, Gavel, Megaphone, School, UserCog, BrainCircuit, GraduationCap, Map, History, ShieldCheck, BarChart3, MessageCircle, RefreshCw } from 'lucide-react';
-import { saveAppConfig, testLineIntegration } from '../services/api';
+import { Save, Loader2, Lock, Eye, EyeOff, LayoutDashboard, MonitorPlay, Users, MapPin, Trophy, Edit3, Award, Printer, FileBadge, IdCard, Gavel, Megaphone, School, UserCog, BrainCircuit, GraduationCap, Map, History, ShieldCheck, BarChart3, MessageCircle, RefreshCw, BarChart } from 'lucide-react';
+import { saveAppConfig, testLineIntegration, getLineQuota } from '../services/api';
 
 interface SettingsViewProps {
   data: AppData;
@@ -23,6 +23,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ data, user, onDataUpdate })
   const [showToken, setShowToken] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [quota, setQuota] = useState<{ totalUsage: number, limit: number | 'none' | null }>({ totalUsage: 0, limit: null });
+  const [loadingQuota, setLoadingQuota] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const role = user?.level?.toLowerCase();
@@ -38,6 +40,27 @@ const SettingsView: React.FC<SettingsViewProps> = ({ data, user, onDataUpdate })
           setLineToken(mergedConfig.line_channel_access_token);
       }
   }, [data.appConfig]);
+
+  // Fetch quota on load if token exists
+  useEffect(() => {
+      if (lineToken) {
+          fetchQuota();
+      }
+  }, [lineToken]);
+
+  const fetchQuota = async () => {
+      setLoadingQuota(true);
+      try {
+          const res = await getLineQuota();
+          if (res.status === 'success') {
+              setQuota({ totalUsage: res.totalUsage, limit: res.value || (res.type === 'none' ? 'none' : 0) });
+          }
+      } catch (e) {
+          console.error("Quota fetch error", e);
+      } finally {
+          setLoadingQuota(false);
+      }
+  };
 
   if (!isAdminOrArea) {
       return (
@@ -83,6 +106,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ data, user, onDataUpdate })
           const res = await testLineIntegration(lineToken, user.userline_id || user.LineID || '');
           if (res.status === 'success') {
               alert('ทดสอบสำเร็จ! กรุณาเช็คข้อความใน LINE ของคุณ');
+              fetchQuota(); // Refresh quota
           } else {
               alert('ทดสอบล้มเหลว: ' + res.message);
           }
@@ -153,15 +177,50 @@ const SettingsView: React.FC<SettingsViewProps> = ({ data, user, onDataUpdate })
 
           {/* LINE Configuration Section */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <div className="mb-6 border-b border-gray-100 pb-4">
-                  <h2 className="text-xl font-bold text-gray-800 flex items-center">
-                      <MessageCircle className="w-6 h-6 mr-2 text-[#06C755]" />
-                      ตั้งค่าการแจ้งเตือน (LINE Messaging API)
-                  </h2>
-                  <p className="text-gray-500 text-sm mt-1">สำหรับการส่งข้อความแจ้งเตือนอัตโนมัติไปยังผู้ใช้งาน (ต้องใช้ Channel Access Token)</p>
+              <div className="mb-6 border-b border-gray-100 pb-4 flex justify-between items-center">
+                  <div>
+                      <h2 className="text-xl font-bold text-gray-800 flex items-center">
+                          <MessageCircle className="w-6 h-6 mr-2 text-[#06C755]" />
+                          ตั้งค่าการแจ้งเตือน (LINE Messaging API)
+                      </h2>
+                      <p className="text-gray-500 text-sm mt-1">สำหรับการส่งข้อความแจ้งเตือนอัตโนมัติไปยังผู้ใช้งาน (ต้องใช้ Channel Access Token)</p>
+                  </div>
+                  <button onClick={fetchQuota} className="text-gray-400 hover:text-blue-500 transition-colors" title="Refresh Quota">
+                      <RefreshCw className={`w-5 h-5 ${loadingQuota ? 'animate-spin' : ''}`} />
+                  </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-6">
+                  {/* Quota Display */}
+                  {lineToken && (
+                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                          <h4 className="text-sm font-bold text-gray-700 flex items-center mb-3">
+                              <BarChart className="w-4 h-4 mr-2 text-blue-600"/>
+                              ปริมาณการส่งข้อความเดือนนี้ (Monthly Quota)
+                          </h4>
+                          
+                          {loadingQuota ? (
+                              <div className="flex items-center text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin mr-2"/> กำลังตรวจสอบ...</div>
+                          ) : (
+                              <div className="space-y-2">
+                                  <div className="flex justify-between text-xs text-gray-600 font-medium">
+                                      <span>ส่งไปแล้ว: {quota.totalUsage.toLocaleString()} ข้อความ</span>
+                                      <span>ลิมิต: {quota.limit === 'none' ? 'ไม่จำกัด' : (quota.limit ? quota.limit.toLocaleString() : 'ไม่ทราบ')}</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                      <div 
+                                          className={`h-full rounded-full ${quota.totalUsage > (typeof quota.limit === 'number' ? quota.limit * 0.9 : 1000) ? 'bg-red-500' : 'bg-[#06C755]'}`} 
+                                          style={{ width: `${typeof quota.limit === 'number' && quota.limit > 0 ? (quota.totalUsage / quota.limit * 100) : (quota.limit === 'none' ? 100 : 0)}%` }}
+                                      ></div>
+                                  </div>
+                                  <p className="text-[10px] text-gray-400 text-right">
+                                      * ข้อมูลอาจไม่อัปเดตแบบเรียลไทม์ (ดีเลย์จาก LINE API)
+                                  </p>
+                              </div>
+                          )}
+                      </div>
+                  )}
+
                   <div>
                       <label className="block text-sm font-bold text-gray-700 mb-2">Channel Access Token (Long-lived)</label>
                       <div className="relative">
@@ -221,4 +280,3 @@ const SettingsView: React.FC<SettingsViewProps> = ({ data, user, onDataUpdate })
 };
 
 export default SettingsView;
-    
