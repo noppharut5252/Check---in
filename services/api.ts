@@ -170,6 +170,18 @@ export const updateCheckInSurveyStatus = async (checkInId: string, status: strin
     return res.status === 'success';
 };
 
+// New: Submit Activity Feedback
+export const submitFeedback = async (data: { userId: string, activityId: string, checkInId: string, rating: number, tags: string[], comment: string }) => {
+    const res = await apiRequest('submitFeedback', data);
+    return res.status === 'success';
+};
+
+// New: Submit System Report (Bug/Suggestion)
+export const submitSystemReport = async (data: { userId: string, type: 'bug' | 'suggestion', subject: string, detail: string, image?: string, deviceInfo?: string }) => {
+    const res = await apiRequest('submitSystemReport', data);
+    return res.status === 'success';
+};
+
 export const uploadImage = async (base64Data: string, filename: string) => {
     // Uploads might take time, give it a bit more initial delay on retry
     return await apiRequest('uploadFile', { data: base64Data, filename, mimeType: 'image/jpeg' }, 2, 2000);
