@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { AppData, User, Team, CertificateTemplate } from '../types';
 import { Search, FileBadge, Settings, Printer, LayoutGrid, Trophy, School, CheckCircle, ChevronLeft, ChevronRight, X, User as UserIcon, GraduationCap, Filter, Lock, Download, Loader2, CheckSquare, Square, Medal, AlertCircle } from 'lucide-react';
@@ -13,35 +14,6 @@ interface CertificatesViewProps {
   data: AppData;
   user?: User | null;
 }
-
-const DEFAULT_TEMPLATE_FALLBACK: CertificateTemplate = {
-    id: 'default',
-    name: 'Default',
-    backgroundUrl: '',
-    headerText: 'สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน',
-    subHeaderText: 'เกียรติบัตรฉบับนี้ให้ไว้เพื่อแสดงว่า',
-    eventName: '',
-    frameStyle: 'simple-gold',
-    logoLeftUrl: 'https://cdn-icons-png.flaticon.com/512/3135/3135768.png',
-    logoRightUrl: '',
-    signatories: [{ name: '.......................................', position: 'ผู้อำนวยการ', signatureUrl: '' }],
-    showSignatureLine: true,
-    dateText: `ให้ไว้ ณ วันที่ ${new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-    showRank: true,
-    serialFormat: '{activityId}-{year}-{run:4}',
-    serialStart: 1,
-    contentTop: 25,
-    footerBottom: 25,
-    logoHeight: 35,
-    signatureSpacing: 3,
-    signatureImgHeight: 20,
-    serialTop: 10,
-    serialRight: 10,
-    qrBottom: 10,
-    qrRight: 10,
-    fontFamily: 'Sarabun',
-    enableTextShadow: true
-};
 
 // --- Internal Components ---
 
@@ -216,8 +188,7 @@ const CertificatesView: React.FC<CertificatesViewProps> = ({ data, user }) => {
   };
 
   const filteredTeams = useMemo(() => {
-      // Allow fallback if no templates configured yet
-      // if (Object.keys(certificateTemplates).length === 0) return [];
+      if (Object.keys(certificateTemplates).length === 0) return [];
 
       return data.teams.filter(team => {
           const school = data.schools.find(s => s.SchoolID === team.schoolId || s.SchoolName === team.schoolId);
@@ -234,9 +205,9 @@ const CertificatesView: React.FC<CertificatesViewProps> = ({ data, user }) => {
 
           if (viewLevel === 'area') {
               if (team.stageStatus !== 'Area' && String(team.flag).toUpperCase() !== 'TRUE') return false;
-              // if (!certificateTemplates['area']) return false; // Relaxed check
+              if (!certificateTemplates['area']) return false;
           } else {
-              // if (!clusterId || !certificateTemplates[clusterId]) return false; // Relaxed check
+              if (!clusterId || !certificateTemplates[clusterId]) return false;
           }
 
           const status = String(team.status);
@@ -297,13 +268,9 @@ const CertificatesView: React.FC<CertificatesViewProps> = ({ data, user }) => {
   const prepareDataAndGetTemplate = async (team: Team, imageCache: Map<string, string>) => {
       const schoolObj = data.schools.find(s => s.SchoolID === team.schoolId || s.SchoolName === team.schoolId);
       const clusterID = schoolObj?.SchoolCluster;
-      
       let template = viewLevel === 'area' ? certificateTemplates['area'] : (clusterID ? certificateTemplates[clusterID] : undefined);
       
-      // Fallback Logic
-      if (!template) {
-          template = certificateTemplates['area'] || DEFAULT_TEMPLATE_FALLBACK;
-      }
+      if (!template) return null;
 
       const processedTemplate = { ...template };
       
@@ -314,7 +281,6 @@ const CertificatesView: React.FC<CertificatesViewProps> = ({ data, user }) => {
           // Check memory cache first
           if (imageCache.has(url)) return imageCache.get(url)!;
 
-          // 1. Try Drive ID
           const id = extractDriveId(url);
           if (id) {
               const base64 = await getProxyImage(id);
@@ -323,25 +289,8 @@ const CertificatesView: React.FC<CertificatesViewProps> = ({ data, user }) => {
                   return base64;
               }
           }
-
-          // 2. Try Generic Fetch (for public URLs)
-          try {
-              const response = await fetch(url);
-              const blob = await response.blob();
-              return new Promise<string>((resolve) => {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                      const b64 = reader.result as string;
-                      imageCache.set(url, b64);
-                      resolve(b64);
-                  };
-                  reader.readAsDataURL(blob);
-              });
-          } catch (e) {
-              // CORS blocked or fetch failed - fall back to original
-              // Note: If html2canvas fails with original, user must fix source.
-              return url;
-          }
+          // If no ID (public URL) or fetch failed, return original
+          return url;
       };
 
       const [bgUrl, logoLeftUrl, logoRightUrl, ...sigUrls] = await Promise.all([
