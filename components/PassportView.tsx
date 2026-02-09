@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppData, User, PassportMission, CheckInLog, CertificateTemplate } from '../types';
 import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check, Clock, User as UserIcon, Split, Grid, LayoutList, Share2, Volume2, Star, Zap, CheckCircle2, Circle, FileBadge, Download, Loader2 } from 'lucide-react';
-import { getUserCheckInHistory, getCertificateConfig, redeemReward } from '../services/api';
+import { getUserCheckInHistory, getCertificateConfig, redeemReward, getProxyImage } from '../services/api';
 // @ts-ignore
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
@@ -228,9 +228,40 @@ const RedemptionModal = ({ isOpen, onClose, mission, user, data }: { isOpen: boo
             // Serial logic: Just use timestamp for self-service or fetch count (simplified here)
             const serialNo = `${mission.id.substring(0,4).toUpperCase()}-${new Date().getFullYear().toString().substr(-2)}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
 
-            // 2. Generate HTML
+            // 2. Pre-process Images to Base64 to avoid CORS issues
+            const extractId = (u: string) => {
+                const m = u.match(/id=([^&]+)/) || u.match(/\/d\/([^/]+)/);
+                return m ? m[1] : null;
+            };
+
+            const processImage = async (url: string) => {
+                if (!url) return '';
+                const id = extractId(url);
+                if (id) {
+                    return await getProxyImage(id) || url;
+                }
+                // Attempt client-side fetch for other URLs to bypass taint if possible
+                try {
+                    const res = await fetch(url);
+                    const blob = await res.blob();
+                    return new Promise<string>(resolve => {
+                        const r = new FileReader();
+                        r.onload = () => resolve(r.result as string);
+                        r.readAsDataURL(blob);
+                    });
+                } catch { return url; }
+            };
+
+            const [bgBase64, logoLeftBase64, logoRightBase64, ...sigBase64s] = await Promise.all([
+                processImage(template.backgroundUrl),
+                processImage(template.logoLeftUrl),
+                processImage(template.logoRightUrl),
+                ...template.signatories.map(s => processImage(s.signatureUrl))
+            ]);
+
+            // 3. Generate HTML
             // Reuse logic from DocumentsView roughly
-            const bgUrl = template.backgroundUrl;
+            const bgUrl = bgBase64;
             const transparentImgStyle = `background-color: transparent !important; mix-blend-mode: normal;`;
             let frameElement = '';
             if (!bgUrl) {
@@ -292,8 +323,8 @@ const RedemptionModal = ({ isOpen, onClose, mission, user, data }: { isOpen: boo
                 <div class="serial-no" style="top:${template.serialTop || 10}mm; right:${template.serialRight || 10}mm;">No. ${serialNo}</div>
                 <div class="content" style="padding-top:${template.contentTop || 25}mm;">
                     <div class="logos ${!template.logoRightUrl ? 'single' : ''}" style="height:${template.logoHeight || 35}mm;">
-                        ${template.logoLeftUrl ? `<img src="${template.logoLeftUrl}" class="logo-img" style="${transparentImgStyle}" />` : '<div></div>'}
-                        ${template.logoRightUrl ? `<img src="${template.logoRightUrl}" class="logo-img" style="${transparentImgStyle}" />` : ''}
+                        ${logoLeftBase64 ? `<img src="${logoLeftBase64}" class="logo-img" style="${transparentImgStyle}" />` : '<div></div>'}
+                        ${logoRightBase64 ? `<img src="${logoRightBase64}" class="logo-img" style="${transparentImgStyle}" />` : ''}
                     </div>
                     <div class="header ${shadowClass}" style="font-family:'${template.fontHeader || defaultFont}', sans-serif;">${template.headerText}</div>
                     <div class="subheader ${shadowClass}" style="font-family:'${template.fontSubHeader || defaultFont}', sans-serif;">${template.subHeaderText}</div>
@@ -305,7 +336,7 @@ const RedemptionModal = ({ isOpen, onClose, mission, user, data }: { isOpen: boo
                     </div>
                     <div class="date ${shadowClass}" style="font-family:'${template.fontDate || defaultFont}', sans-serif;">${template.dateText}</div>
                     <div class="signatures" style="margin-bottom:${template.footerBottom || 25}mm;">
-                        ${template.signatories.map(sig => `<div class="sig-block"><div style="position:relative; display:flex; justify-content:center; align-items:flex-end;">${sig.signatureUrl ? `<img src="${sig.signatureUrl}" class="sig-img" style="${sigImgStyle}" />` : '<div style="height:20mm;"></div>'}</div>${template.showSignatureLine!==false?'<div class="sig-line"></div>':''}<div class="sig-name ${shadowClass}" style="font-family:'${template.fontSignatures || defaultFont}', sans-serif; margin-top:${template.signatureSpacing || 3}mm;">(${sig.name})</div><div class="sig-pos ${shadowClass}" style="font-family:'${template.fontSignatures || defaultFont}', sans-serif;">${sig.position}</div></div>`).join('')}
+                        ${template.signatories.map((sig, idx) => `<div class="sig-block"><div style="position:relative; display:flex; justify-content:center; align-items:flex-end;">${sigBase64s[idx] ? `<img src="${sigBase64s[idx]}" class="sig-img" style="${sigImgStyle}" />` : '<div style="height:20mm;"></div>'}</div>${template.showSignatureLine!==false?'<div class="sig-line"></div>':''}<div class="sig-name ${shadowClass}" style="font-family:'${template.fontSignatures || defaultFont}', sans-serif; margin-top:${template.signatureSpacing || 3}mm;">(${sig.name})</div><div class="sig-pos ${shadowClass}" style="font-family:'${template.fontSignatures || defaultFont}', sans-serif;">${sig.position}</div></div>`).join('')}
                     </div>
                     <div class="qr-verify" style="bottom:${template.qrBottom || 10}mm; right:${template.qrRight || 10}mm;">
                         <img src="${certQr}" class="qr-img" style="${transparentImgStyle}" />
@@ -315,7 +346,7 @@ const RedemptionModal = ({ isOpen, onClose, mission, user, data }: { isOpen: boo
             </div>
             </body></html>`;
 
-            // 3. Convert & Save
+            // 4. Convert & Save
             const element = document.createElement('div');
             element.innerHTML = htmlContent;
             document.body.appendChild(element); // Temp append
@@ -324,14 +355,14 @@ const RedemptionModal = ({ isOpen, onClose, mission, user, data }: { isOpen: boo
                 margin: 0,
                 filename: `certificate_${mission.id}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, logging: false },
+                html2canvas: { scale: 2, logging: false, useCORS: true },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
             };
             
             await html2pdf().set(opt).from(element).save();
             document.body.removeChild(element); // Cleanup
 
-            // 4. Log Redemption in Backend
+            // 5. Log Redemption in Backend
             // Fire and forget, or await if critical. Here we assume success to not block user.
             redeemReward(user.userid || user.UserID, mission.id, 'SELF');
 
