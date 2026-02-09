@@ -170,6 +170,7 @@ const RedemptionModal = ({ isOpen, onClose, mission, user, data }: { isOpen: boo
     const [qrSrc, setQrSrc] = useState('');
     const [isDownloading, setIsDownloading] = useState(false);
     const [template, setTemplate] = useState<CertificateTemplate | null>(null);
+    const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
     const themeColor = mission.rewardColor || '#F59E0B';
 
     useEffect(() => {
@@ -178,6 +179,7 @@ const RedemptionModal = ({ isOpen, onClose, mission, user, data }: { isOpen: boo
         if (mission.rewardType === 'certificate') {
             // Load Certificate Config
             const loadConfig = async () => {
+                setIsLoadingTemplate(true);
                 try {
                     // Try to find specific template if ID exists
                     const configs = await getCertificateConfig();
@@ -193,6 +195,8 @@ const RedemptionModal = ({ isOpen, onClose, mission, user, data }: { isOpen: boo
                     }
                 } catch(e) {
                     console.error("Failed to load cert config", e);
+                } finally {
+                    setIsLoadingTemplate(false);
                 }
             };
             loadConfig();
@@ -371,14 +375,21 @@ const RedemptionModal = ({ isOpen, onClose, mission, user, data }: { isOpen: boo
                                 <p className="text-sm text-gray-500">
                                     ยินดีด้วย! คุณผ่านภารกิจนี้แล้ว<br/>สามารถดาวน์โหลดเกียรติบัตรได้ทันที
                                 </p>
-                                <button 
-                                    onClick={handleDownloadCertificate}
-                                    disabled={isDownloading}
-                                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center"
-                                >
-                                    {isDownloading ? <Loader2 className="w-5 h-5 animate-spin mr-2"/> : <Download className="w-5 h-5 mr-2"/>}
-                                    ดาวน์โหลดเกียรติบัตร (PDF)
-                                </button>
+                                {isLoadingTemplate ? (
+                                    <div className="w-full py-3 bg-gray-100 text-gray-400 rounded-xl font-bold flex items-center justify-center">
+                                        <Loader2 className="w-5 h-5 animate-spin mr-2"/>
+                                        กำลังเตรียมรูปแบบ...
+                                    </div>
+                                ) : (
+                                    <button 
+                                        onClick={handleDownloadCertificate}
+                                        disabled={isDownloading || !template}
+                                        className={`w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center ${(!template || isDownloading) ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    >
+                                        {isDownloading ? <Loader2 className="w-5 h-5 animate-spin mr-2"/> : <Download className="w-5 h-5 mr-2"/>}
+                                        {template ? 'ดาวน์โหลดเกียรติบัตร (PDF)' : 'ไม่พบรูปแบบเกียรติบัตร'}
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <>
